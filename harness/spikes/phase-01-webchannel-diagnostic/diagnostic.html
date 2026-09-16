@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>WebChannel diagnostic</title>
+<div id="output"></div>
+<script src="qrc:///qtwebchannel/qwebchannel.js"></script>
+<script>
+window.addEventListener("load", () => {
+  console.log("readyState=" + document.readyState);
+  console.log("location=" + location.href);
+  console.log("typeof qt=" + typeof qt);
+  console.log("typeof QWebChannel=" + typeof QWebChannel);
+  console.log("typeof qt.webChannelTransport=" + (typeof qt === "undefined" ? "qt-undefined" : typeof qt.webChannelTransport));
+  if (typeof qt !== "undefined" && typeof QWebChannel !== "undefined") {
+    new QWebChannel(qt.webChannelTransport, channel => {
+      window.bridge = channel.objects.bridge;
+      console.log("WebChannel initialized");
+      console.log("bridge=" + typeof window.bridge);
+      window.bridge.ready("javascript");
+      window.bridge.ping("hello", result => console.log("ping result=" + result));
+    });
+  }
+});
+</script>
