@@ -98,6 +98,44 @@ The core must not import or expose Docling types.
 
 ---
 
+---
+
+## D-011 — Canonical project identity
+
+**Status:** Accepted
+
+The canonical project name is `PDF2MD_OnDemand`. The Python distribution is
+`pdf2md-ondemand`, the package is `pdf2md_ondemand`, the future CLI command is
+`pdf2md`, and derived workspace state lives in `.pdf2md/`. `PDF2ME_OnDemand`
+is not a valid project name.
+
+---
+
+## D-012 — Python environment and initial tooling
+
+**Status:** Accepted
+
+The project uses `uv` exclusively with CPython 3.13, `.python-version` set to
+`3.13`, `requires-python = ">=3.13,<3.14"`, a `uv`-managed `.venv`, and a
+versioned `uv.lock`. Runtime dependency is PySide6. Development dependencies
+are pytest, pytest-cov, ruff and mypy. Ruff owns linting and formatting; mypy
+owns static type checking. No minimum coverage percentage is imposed.
+
+Poetry, pipenv, conda, requirements.txt, black, isort, flake8, pylint, tox,
+hatch and pre-commit are excluded from the initial tooling.
+
+---
+
+## D-013 — Phase 0 scope
+
+**Status:** Accepted
+
+Phase 0 is foundation-only. `uv run pdf2md` must construct `QApplication` and
+`MainWindow` and allow a minimal desktop window to open and close. Markdown,
+editor, preview, workspace/vault, SQLite, relationships, graph, PDF/OCR,
+operators, jobs, Mermaid, MathJax, CodeMirror, WebEngine, CI and packaging are
+explicitly deferred.
+
 ## Open decisions
 
 These require implementation spikes/evidence before final choice:
