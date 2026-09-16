@@ -1,0 +1,24 @@
+{
+  "project": "PDF2MD_OnDemand",
+  "docs_version": "0.1",
+  "files": [
+    "AGENTS.md",
+    "CONSTITUTION.md",
+    "GOALS.md",
+    "PLANS.md",
+    "PROMPTS.md",
+    "README.md",
+    "docs/ARCHITECTURE.md",
+    "docs/CODEX_WORKFLOW.md",
+    "docs/DECISIONS.md",
+    "docs/MARKDOWN_COMPATIBILITY.md",
+    "docs/OPERATORS.md",
+    "docs/PDF_OPERATOR.md",
+    "docs/PRODUCT_SPEC.md",
+    "docs/ROADMAP.md",
+    "docs/TEST_STRATEGY.md",
+    "docs/UI_UX.md",
+    "docs/WORKSPACE_AND_VAULT.md",
+    "harness/context/README.md"
+  ]
+}
