@@ -96,7 +96,10 @@ Unknown languages remain ordinary code blocks.
 
 Raw HTML creates a security boundary.
 
-Default preview behavior must prevent arbitrary untrusted script execution or privileged bridge access.
+Default preview behavior must prevent arbitrary untrusted script execution or
+privileged bridge access. In the approved architecture, QWebChannel exists only
+in the Editor WebView; the Preview has no privileged Python bridge. The initial
+renderer configuration disables raw HTML, and navigation schemes are controlled.
 
 If a future "unsafe HTML" mode exists, it must be explicit and clearly scoped.
 

@@ -22,12 +22,17 @@ Open .md -> edit -> preview -> save
 
 Includes:
 
-- editor;
+- CodeMirror 6 editor in a dedicated WebEngine view;
+- separate markdown-it preview in a dedicated WebEngine view;
+- narrow QWebChannel bridge in the editor only;
 - preview;
 - tabs if justified;
 - file change safety;
 - toolbar basics;
 - Markdown compatibility fixtures.
+
+The first implementation target is standalone-file mode. Workspace/Vault,
+multi-tab and rich extensions remain later work unless separately approved.
 
 This phase proves the core product.
 

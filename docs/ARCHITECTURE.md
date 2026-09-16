@@ -19,7 +19,7 @@ The architecture should be modular without becoming framework-heavy.
 ```text
 ┌──────────────────────────────────────────────┐
 │                    UI                        │
-│ PySide6 shell / editor host / preview / graph│
+│ PySide6 shell / CodeMirror host / preview / graph│
 └──────────────────────┬───────────────────────┘
                        │ calls
                        ▼
@@ -148,7 +148,16 @@ The preview renders source text.
 
 The renderer must not mutate the editor source as a side effect.
 
-If a web-based editor/preview is embedded with Qt WebEngine, define a narrow bridge rather than exposing arbitrary Python objects to JavaScript.
+The approved Phase 1 direction uses CodeMirror 6 in a dedicated Qt WebEngine
+view and a separate Qt WebEngine view for preview. The Editor may use a narrow
+QWebChannel bridge; the Preview must not receive privileged Python objects.
+Node/npm/esbuild are build tools only, and frontend assets are local at runtime.
+The renderer must not mutate editor source as a side effect.
+
+Preview content is untrusted. Raw HTML and script execution are disabled by
+default, and navigation is controlled by scheme. Broad `file://` access from
+the spikes is not a production boundary; internal resources and document assets
+require controlled URL handling.
 
 ## 8. Graph boundary
 

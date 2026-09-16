@@ -51,7 +51,10 @@ The product may support:
 - split editor/preview;
 - preview only.
 
-External-browser preview may be considered later, but embedded preview should be the primary experience if technically reliable.
+The approved Phase 1 layout uses a resizable split view with CodeMirror in a
+dedicated Editor WebView and Markdown preview in a separate Preview WebView.
+External-browser preview may be considered later, but embedded preview remains
+the primary experience. The Preview is not a privileged application surface.
 
 ## 5. Graph
 

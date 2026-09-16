@@ -136,6 +136,53 @@ editor, preview, workspace/vault, SQLite, relationships, graph, PDF/OCR,
 operators, jobs, Mermaid, MathJax, CodeMirror, WebEngine, CI and packaging are
 explicitly deferred.
 
+---
+
+## D-014 — Fase 1: arquitetura Editor + Preview
+
+**Status:** Accepted
+
+O editor principal será CodeMirror 6 executado em um `QWebEngineView` dedicado.
+O preview será um `QWebEngineView` separado, usando `markdown-it` como renderer.
+
+`QWebChannel` será exposto exclusivamente ao Editor. O Preview não receberá
+QObject Python privilegiado; `MainWindow`, `QApplication`, filesystem,
+subprocessos e objetos Python genéricos não serão expostos a conteúdo renderizado.
+
+Ações de toolbar serão controladas por Qt/PySide6 e seguirão:
+
+```text
+QAction/QPushButton → Python → QWebChannel → transação CodeMirror
+```
+
+Undo/redo pertencem ao histórico nativo do CodeMirror. Python não manterá
+histórico paralelo. Search pertence ao mecanismo do CodeMirror, embora sua UI
+futura possa ser Qt ou frontend.
+
+O preview será atualizado com debounce; aproximadamente 200 ms é um ponto
+inicial de implementação, não uma constante arquitetural imutável.
+
+Node.js, npm e esbuild são ferramentas de desenvolvimento/build. O runtime não
+depende de Node, CDN ou internet e usa assets frontend locais.
+
+O Preview é conteúdo não confiável: raw HTML fica desabilitado inicialmente,
+JavaScript proveniente do Markdown não executa, e `javascript:`, `data:`,
+`file:` arbitrário e schemes desconhecidos são bloqueados por padrão. HTTP/HTTPS
+podem ser abertos externamente somente após ação explícita do usuário.
+
+O uso amplo de `file://` nos spikes não é arquitetura de produção. Recursos
+internos devem avaliar `qrc://`; assets do documento/workspace devem usar
+`QWebEngineUrlSchemeHandler` ou custom URL scheme controlado, com restrição de
+contexto e proteção contra path traversal.
+
+B2, com Editor e Preview no mesmo WebView, não será adotado inicialmente por
+menor isolamento e maior acoplamento. O editor Qt nativo permanece tecnicamente
+válido, mas não será a arquitetura principal.
+
+Permanecem abertas: scheme de assets, Mermaid, MathJax/KaTeX, scroll sync,
+autosave, conflitos externos avançados, CSS, temas, acessibilidade, política
+final de links externos e empacotamento definitivo dos bundles.
+
 ## Open decisions
 
 These require implementation spikes/evidence before final choice:
