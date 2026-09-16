@@ -1,0 +1,14 @@
+README.md
+pyproject.toml
+src/pdf2md_ondemand/__init__.py
+src/pdf2md_ondemand/__main__.py
+src/pdf2md_ondemand.egg-info/PKG-INFO
+src/pdf2md_ondemand.egg-info/SOURCES.txt
+src/pdf2md_ondemand.egg-info/dependency_links.txt
+src/pdf2md_ondemand.egg-info/entry_points.txt
+src/pdf2md_ondemand.egg-info/requires.txt
+src/pdf2md_ondemand.egg-info/top_level.txt
+src/pdf2md_ondemand/ui/__init__.py
+src/pdf2md_ondemand/ui/desktop/__init__.py
+src/pdf2md_ondemand/ui/desktop/main_window.py
+tests/test_smoke.py
