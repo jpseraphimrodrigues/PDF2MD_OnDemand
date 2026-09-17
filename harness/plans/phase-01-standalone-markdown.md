@@ -114,8 +114,15 @@ BOM, erros e snapshot. Conclusão: funciona sem Qt.
 
 ### 2 — Frontend
 
-Organizar fontes CodeMirror/markdown-it, lockfile e bundle local. Testar ausência
-de referências remotas e presença dos assets.
+**Concluída (2026-09-17).** Fontes CodeMirror e markdown-it organizadas em
+`frontend/src/`, com páginas independentes para Editor e Preview, lockfile npm
+e build reproduzível via esbuild. `npm ci` e `npm run build` passaram a partir
+de `frontend/`; os bundles gerados e `node_modules/` são ignorados pelo Git.
+Auditoria das fontes e bundles não encontrou carregamento remoto de código ou
+chamadas de rede; URLs HTTP(S) presentes pertencem a comentários, ao parser
+Markdown ou a strings incorporadas. Node/npm permanecem somente ferramentas de
+build. O runtime Python ainda precisa empacotar/servir esses recursos quando a
+UI for integrada.
 
 ### 3 — Editor/bridge
 
@@ -162,6 +169,14 @@ directive e Unicode; comparar source salvo e HTML esperado.
 ### 12 — Integração
 
 Executar `uv run pdf2md`, fluxo manual e suíte completa offline.
+
+**Etapa 2 — registro de execução:** arquivos `frontend/package.json`,
+`frontend/package-lock.json`, `frontend/src/editor.js`, `editor.html`,
+`preview.js`, `preview.html` e `frontend/.gitignore`. Dependências já aceitas
+nos spikes: CodeMirror 6 (MIT), markdown-it 14 (MIT) e esbuild (MIT). Critério
+de conclusão: fontes separadas, instalação determinística, bundles locais e
+nenhuma referência remota necessária ao runtime — atendido. Comandos:
+`npm ci` e `npm run build` em `frontend/`.
 
 Cada etapa deve registrar objetivo, arquivos prováveis, dependências, testes e
 critério de conclusão antes de ser considerada completa.
@@ -228,3 +243,4 @@ complexos e framework de settings.
 
 Registrar comandos, resultados de fixtures e validação manual. Não declarar
 sucesso sem execução real.
+

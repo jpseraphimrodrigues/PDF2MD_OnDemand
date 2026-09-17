@@ -35,3 +35,19 @@ adapter's final version check and `os.replace`. Non-overwrite publication of a
 new path is atomic on filesystems that support hard links; filesystems that do
 not support them will return a write error rather than silently clobber a file.
 Save As overwrite UX and the document core remain unconnected to the editor UI.
+
+## Frontend build increment (2026-09-17)
+
+Phase 1 step 2 is complete. Production-oriented frontend sources now live under
+`frontend/src/`: isolated CodeMirror Editor page and markdown-it Preview page,
+with `package.json`/`package-lock.json` and an esbuild command producing local
+`dist/editor.js` and `dist/preview.js`. `frontend/.gitignore` excludes generated
+`dist/` and `node_modules/`; only sources and lockfile are versioned. Runtime
+Python does not invoke Node/npm. The Editor HTML references the local Qt
+WebChannel resource and its local bundle; the Preview references only its local
+bundle. No remote code loading/fetch/XHR/WebSocket was found in source or built
+bundles. HTTP(S) strings remain for Markdown link handling and comments.
+
+Validation: from `frontend/`, `npm ci` and `npm run build` passed. In Python,
+`uv run pytest` (8 passed), `uv run ruff check src tests`, and `uv run mypy`
+passed. Integration and runtime packaging are still pending in subsequent steps.
