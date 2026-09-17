@@ -150,7 +150,12 @@ qrc para internos e custom scheme/handler para documentos.
 
 ### 6 — Split UI
 
-Compor dois WebViews em split redimensionável e testar contratos essenciais.
+**Concluída (2026-09-17).** `MainWindow` compõe Editor e Preview em
+`QSplitter` horizontal redimensionável. Alterações do Editor são agrupadas por
+debounce single-shot de 200 ms; o Preview recebe o conteúdo mais recente.
+Teste da composição verifica split, orientação e debounce. Integração usa
+widgets substitutos no teste; testes QWebEngine dedicados cobrem Editor e o
+bundle do Preview separadamente.
 
 ### 7 — Open/Save/Save As
 

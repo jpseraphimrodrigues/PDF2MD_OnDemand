@@ -77,3 +77,13 @@ it verifies headings/emphasis, raw script escaping, and unchanged input source.
 Validation: `npm test` passed; previous Editor tests, Ruff and mypy passed.
 Preview's actual WebEngine page and security/navigation/assets are still to be
 covered in later steps.
+
+## Split UI increment (2026-09-17)
+
+Phase 1 step 6 is implemented. `MainWindow` now composes `EditorView` and
+`PreviewView` in a horizontal `QSplitter` and debounces Editor content changes
+for 200 ms before rendering the most recent Markdown. A deterministic test uses
+widget substitutes to verify composition and debounce; Editor's WebEngine
+round-trip and Preview's actual bundle behavior have separate coverage.
+Validation: focused pytest (3 passed), Ruff, mypy, and `npm test` passed.
+Open/Save, dirty state, toolbar, and asset/navigation policies remain later work.
