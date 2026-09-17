@@ -87,3 +87,14 @@ widget substitutes to verify composition and debounce; Editor's WebEngine
 round-trip and Preview's actual bundle behavior have separate coverage.
 Validation: focused pytest (3 passed), Ruff, mypy, and `npm test` passed.
 Open/Save, dirty state, toolbar, and asset/navigation policies remain later work.
+
+## Autonomous execution stop (2026-09-17)
+
+The run completed steps 2, 3, 4, and 6, with checkpoints. It stopped before
+step 5 because the documented production boundary for document assets remains
+undecided: Qt's `QWebEngineUrlSchemeHandler` versus a custom URL scheme and,
+more materially, the authorized root for assets in a standalone document. This
+choice governs filesystem isolation and path portability and affects the
+upcoming Open/Save integration. Resume by deciding and recording the scheme /
+handler plus whether a standalone note may reference only its parent directory
+or an independently selected asset root. No asset resolution was implemented.

@@ -258,3 +258,20 @@ complexos e framework de settings.
 Registrar comandos, resultados de fixtures e validação manual. Não declarar
 sucesso sem execução real.
 
+
+## Stop condition — decisão de assets pendente (2026-09-17)
+
+A execução autônoma pausa antes da etapa 5. O plano exige assets relativos
+resolvidos sob contexto autorizado e lista duas alternativas de produção:
+`QWebEngineUrlSchemeHandler` ou custom URL scheme; D-014 mantém a escolha aberta.
+A política de base e permissões afeta diretamente `Open/Save`, pois o documento
+pode ser standalone em qualquer diretório. Implementar sem decidir isso pode
+abrir filesystem além do diretório do documento ou criar URLs não portáveis.
+Nenhuma evidência atual seleciona uma alternativa ou define o contrato do
+contexto autorizado. Retomar decidindo/registrando: (a) scheme/handler e (b) se
+assets de uma nota standalone podem acessar somente o diretório pai do arquivo,
+ou uma raiz selecionada separadamente.
+
+Etapas completas nesta execução: 2 Frontend, 3 Editor/bridge, 4 Preview e 6
+Split UI. Etapas 1 e 5, 7–12 permanecem incompletas; etapa 1 tem o núcleo
+implementado, porém ainda não integrado à UI.
