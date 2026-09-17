@@ -107,6 +107,8 @@ Runtime Python não executa npm e não depende de rede/CDN.
 
 ### 1 — Document/session/filesystem
 
+**Em andamento — núcleo implementado; validação parcial registrada abaixo.**
+
 Criar tipos puros, protocolo e adapter UTF-8. Testar open/save/save-as, dirty,
 BOM, erros e snapshot. Conclusão: funciona sem Qt.
 
@@ -163,6 +165,36 @@ Executar `uv run pdf2md`, fluxo manual e suíte completa offline.
 
 Cada etapa deve registrar objetivo, arquivos prováveis, dependências, testes e
 critério de conclusão antes de ser considerada completa.
+
+### Evidência parcial da etapa 1 (2026-09-17)
+
+Implementados `Document`, `DocumentSession`, casos de uso open/save, porta
+`DocumentStore` e adapter de filesystem. O adapter preserva BOM UTF-8 e conteúdo
+textual (incluindo CRLF e sintaxe desconhecida), escreve via temporário no mesmo
+diretório e impede salvamento normal quando o snapshot mudou. Save As grava no
+destino selecionado e atualiza a sessão. Testes e verificações atuais: `uv run
+pytest` (5 passed), `uv run ruff check src tests` e `uv run mypy` (sem problemas).
+
+Limite conhecido: a detecção de alteração externa e `os.replace` não formam uma
+operação CAS atômica portátil; o token é revalidado imediatamente antes da
+substituição, reduzindo a janela de corrida. Em Save As sem overwrite, a criação
+de destino novo usa hard-link atômico para impedir que um arquivo criado
+concorrentemente seja substituído. `overwrite=True` autoriza `os.replace` para
+destino existente, com validação do token observado antes da escrita. A etapa
+permanece parcial: integração GUI continua pendente.
+
+### Atualização de concorrência e Save As (2026-09-17)
+
+Save As agora recebe `overwrite=False` por padrão e lança
+`DestinationExistsError` sem modificar arquivo/sessão quando o destino já
+existe. Com `overwrite=True`, o adapter substitui atomicamente o destino apenas
+se a versão observada no início da gravação não mudou. A versão otimista da
+sessão é um token SHA-256 dos bytes completos (incluindo BOM); mtime/tamanho não
+são usados como identidade da versão. Save normal compara o token no caso de uso
+e novamente no adapter antes do replace. Testes direcionados cobrem destino
+existente, overwrite explícito, BOM/CRLF/sintaxe desconhecida e mudanças entre
+checagem e gravação. Validação: `uv run pytest tests/test_document_session.py`
+(6 passed), Ruff direcionado e `uv run mypy` passaram.
 
 ## 11. Testes
 
