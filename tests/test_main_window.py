@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QEventLoop, QObject, Qt, QTimer, Signal
-from PySide6.QtWidgets import QApplication, QSplitter, QWidget
+from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QWidget
 from pytest import MonkeyPatch
 
 from pdf2md_ondemand.application.document_session import DocumentSession
@@ -41,6 +41,8 @@ class _Editor(QWidget):
 
 
 class _Preview(QWidget):
+    externalLinkRequested = Signal(str)
+
     def __init__(self, sessions) -> None:
         super().__init__()
         self.rendered: list[str] = []
@@ -93,6 +95,39 @@ def test_format_toolbar_actions_dispatch_narrow_bridge_commands(
         action.trigger()
 
     assert commands == ["bold", "italic", "heading", "link", "code"]
+    window.close()
+    app.processEvents()
+
+
+def test_external_link_requires_confirmation_before_opening_browser(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    app, window = _make_window(monkeypatch)
+    prompts: list[str] = []
+    opened: list[str] = []
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "question",
+        lambda *args: prompts.append(args[2])
+        or QMessageBox.StandardButton.No,
+    )
+    monkeypatch.setattr(
+        main_window.QDesktopServices,
+        "openUrl",
+        lambda url: opened.append(url.toString()) or True,
+    )
+
+    window.preview_view.externalLinkRequested.emit("https://example.test/")
+    assert prompts and "https://example.test/" in prompts[0]
+    assert opened == []
+
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "question",
+        lambda *args: QMessageBox.StandardButton.Yes,
+    )
+    window.preview_view.externalLinkRequested.emit("https://example.test/")
+    assert opened == ["https://example.test/"]
     window.close()
     app.processEvents()
 

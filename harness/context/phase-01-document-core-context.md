@@ -172,3 +172,18 @@ Heading adds `# ` at the current line start. Programmatic source synchronization
 is annotated outside history; formatting remains undoable by CodeMirror's native
 history. Headless QWebEngine proves bold + undo preserves the original Unicode
 source. Focused pytest (18 passed), `npm test` (4 passed), Ruff, and mypy passed.
+
+## Preview navigation security increment (2026-09-17)
+
+Phase 1 step 10 is implemented. `PreviewPage` blocks unknown/dangerous schemes,
+permits internal QRC/custom asset resources only in non-main-frame navigation,
+and emits an external request only for an HTTP(S) `NavigationTypeLinkClicked` in
+the main frame. The main window asks the user before passing the URL to
+`QDesktopServices`; redirects, automatic HTTP(S) navigations, and external
+subframes are blocked silently. Main-frame navigation to `pdf2md-asset` is also
+blocked. Preview downloads are cancelled, popups rejected, and local file,
+remote access, LocalStorage, and JS window opening are disabled. Raw HTML stays
+disabled by markdown-it; JS is enabled only for the trusted bundled app shell.
+Focused pytest (27 passed, 1 skipped due to Windows symlink restriction), Ruff,
+mypy, and `npm test` (4 passed) passed. Policy/UI tests are unit-level; real
+Chromium click/redirect navigation has not been exercised end-to-end.

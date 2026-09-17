@@ -114,6 +114,9 @@ def test_preview_uses_isolated_profile_with_restricted_settings() -> None:
         QWebEngineSettings.WebAttribute.LocalStorageEnabled,
     ):
         assert not preview.settings().testAttribute(attribute)
+    assert preview.settings().testAttribute(
+        QWebEngineSettings.WebAttribute.JavascriptEnabled
+    )
 
     assert preview.page().profile() is profile
     preview.deleteLater()

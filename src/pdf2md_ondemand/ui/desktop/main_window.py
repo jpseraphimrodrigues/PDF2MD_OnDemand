@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
@@ -47,6 +47,7 @@ class MainWindow(QMainWindow):
         self.editor_view = EditorView()
         self.asset_sessions = AssetSessionRegistry()
         self.preview_view = PreviewView(self.asset_sessions)
+        self.preview_view.externalLinkRequested.connect(self._confirm_external_link)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.editor_view)
         self.splitter.addWidget(self.preview_view)
@@ -250,6 +251,17 @@ class MainWindow(QMainWindow):
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)
+
+    def _confirm_external_link(self, url: str) -> None:
+        answer = QMessageBox.question(
+            self,
+            "Open external link?",
+            f"Open this link in your browser?\n\n{url}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            QDesktopServices.openUrl(QUrl(url))
 
     def _schedule_preview(self, markdown: str) -> None:
         self._pending_markdown = markdown

@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QUrl, Signal
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -24,6 +24,8 @@ from pdf2md_ondemand.application.asset_sessions import AssetSessionRegistry
 class PreviewView(QWebEngineView):
     """Render Markdown in a local page without a Python WebChannel object."""
 
+    externalLinkRequested = Signal(str)
+
     def __init__(
         self,
         sessions: AssetSessionRegistry,
@@ -37,8 +39,11 @@ class PreviewView(QWebEngineView):
         self.profile = QWebEngineProfile(self)
         self.asset_handler = PreviewAssetHandler(sessions, self.profile)
         self.profile.installUrlSchemeHandler(SCHEME_NAME, self.asset_handler)
-        self.setPage(QWebEnginePage(self.profile, self.profile))
+        self.preview_page = PreviewPage(self.profile, self)
+        self.preview_page.externalLinkRequested.connect(self.externalLinkRequested)
+        self.setPage(self.preview_page)
         settings = self.settings()
+        settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
         for attribute in (
             QWebEngineSettings.WebAttribute.LocalContentCanAccessFileUrls,
             QWebEngineSettings.WebAttribute.LocalContentCanAccessRemoteUrls,
@@ -54,6 +59,7 @@ class PreviewView(QWebEngineView):
             f"<script>{bundle}</script>",
         )
         self.setHtml(shell, QUrl("qrc:///pdf2md-preview/index.html"))
+        self.profile.downloadRequested.connect(lambda download: download.cancel())
 
     def render_markdown(self, markdown: str) -> None:
         """Render source as preview HTML; the input string is left untouched."""
@@ -91,3 +97,45 @@ class PreviewView(QWebEngineView):
 
 def _frontend_file(name: str) -> Path:
     return Path(__file__).resolve().parents[4] / "frontend" / "src" / name
+
+
+def navigation_policy(scheme: str) -> str:
+    """Return allow, external-confirmation, or block for a navigation scheme."""
+    normalized = scheme.lower()
+    if normalized in {"qrc", "pdf2md-asset"}:
+        return "allow"
+    if normalized in {"http", "https"}:
+        return "external-confirmation"
+    return "block"
+
+
+class PreviewPage(QWebEnginePage):
+    """Keep document links inside the trusted local renderer or ask externally."""
+
+    externalLinkRequested = Signal(str)
+
+    def acceptNavigationRequest(
+        self,
+        url: QUrl | str,
+        navigation_type: QWebEnginePage.NavigationType,
+        is_main_frame: bool,
+    ) -> bool:
+        if isinstance(url, str):
+            url = QUrl(url)
+        policy = navigation_policy(url.scheme())
+        if policy == "allow" and not is_main_frame:
+            return True
+        if (
+            policy == "external-confirmation"
+            and is_main_frame
+            and navigation_type
+            == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+        ):
+            self.externalLinkRequested.emit(url.toString())
+        return False
+
+    def createWindow(
+        self, window_type: QWebEnginePage.WebWindowType
+    ) -> QWebEnginePage:
+        del window_type
+        return None  # type: ignore[return-value]  # Qt treats nullptr as blocked popup.

@@ -197,8 +197,15 @@ Node cobrem specs e teste Qt headless prova formatação + Undo sobre Unicode.
 
 ### 10 — Segurança/links
 
-Aplicar settings, HTML restritivo, bloqueio de schemes e ação explícita para
-links externos.
+**Concluída (2026-09-17).** Preview mantém raw HTML escapado, bloqueia downloads
+e popups, desativa acesso remoto/file/localStorage e bloqueia schemes
+desconhecidos/perigosos. Navegação interna é limitada aos recursos em subframes;
+HTTP/HTTPS só emite pedido quando é link clicado no frame principal, abre
+confirmação e usa QDesktopServices após Yes. Redirects, subframes externos e
+assets em navegação principal são bloqueados sem abertura externa. Testes da
+policy e diálogo confirmam os caminhos permitidos/bloqueados. Redirect/click real
+no Chromium não foi automatizado; lógica 
+headless foi validada.
 
 ### 11 — Regressão/golden
 
