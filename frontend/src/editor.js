@@ -16,5 +16,12 @@ const api = {
   undo: () => undo(view), redo: () => redo(view), find: () => openSearchPanel(view)
 };
 window.editorApi = api;
-view = new EditorView({state: EditorState.create({doc: window.initialMarkdown || "", extensions: [basicSetup, markdown(), history(), keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]), EditorView.updateListener.of(u => { if (u.docChanged && bridge) bridge.receiveContent(view.state.doc.toString()); })]}), parent: document.querySelector("#editor")});
-new QWebChannel(qt.webChannelTransport, channel => { bridge = channel.objects.editorBridge; bridge.editorReady(); });
+view = new EditorView({state: EditorState.create({extensions: [basicSetup, markdown(), history(), keymap.of([...defaultKeymap, ...historyKeymap, ...searchKeymap]), EditorView.updateListener.of(u => { if (u.docChanged && bridge) bridge.setContent(view.state.doc.toString()); })]}), parent: document.querySelector("#editor")});
+if (typeof qt !== "undefined" && qt.webChannelTransport) {
+  new QWebChannel(qt.webChannelTransport, (channel) => {
+    bridge = channel.objects.editorBridge;
+    bridge.contentChanged.connect((text) => api.setContent(text));
+    bridge.getContent((text) => api.setContent(text));
+  });
+}
+

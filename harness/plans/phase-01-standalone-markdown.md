@@ -126,8 +126,13 @@ UI for integrada.
 
 ### 3 — Editor/bridge
 
-Integrar Editor WebView e QWebChannel estreito para set/get/contentChanged.
-Testar Unicode, seleção, cursor e ausência de objetos arbitrários.
+**Concluída (2026-09-17).** `EditorView` carrega o shell local CodeMirror em
+QWebEngineView e mantém QWebChannel com `EditorBridge`, expondo somente
+`setContent`, `getContent` e `contentChanged`. O Editor sincroniza o texto UTF-8
+com a bridge; Preview ainda não recebe nenhum QObject. Testes cobrem contrato
+da superfície invocável e round-trip headless Unicode. Limitações: seleção e
+cursor ainda não foram exercitados por integração Qt, e produção deve executar
+`npm run build` antes de iniciar para gerar o bundle ignorado `frontend/dist`.
 
 ### 4 — Preview
 

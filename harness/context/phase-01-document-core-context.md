@@ -51,3 +51,17 @@ bundles. HTTP(S) strings remain for Markdown link handling and comments.
 Validation: from `frontend/`, `npm ci` and `npm run build` passed. In Python,
 `uv run pytest` (8 passed), `uv run ruff check src tests`, and `uv run mypy`
 passed. Integration and runtime packaging are still pending in subsequent steps.
+
+## Editor bridge increment (2026-09-17)
+
+Phase 1 step 3 is implemented. `EditorView` hosts the local CodeMirror page and
+retains its `QWebChannel` and `EditorBridge`; the bridge exposes only
+`setContent(str)`, `getContent() -> str`, and `contentChanged(str)`. The frontend
+initializes from the Python-held source after WebChannel callback and routes
+CodeMirror changes back through `setContent`. A headless QWebEngine test verifies
+initial Unicode round-trip and the bridge contract; separate tests ensure the
+QObject surface is narrow. Validation: targeted pytest (2 passed), Ruff,
+mypy, and frontend esbuild build passed. Qt headless emitted expected missing
+font/GPU warnings. Generated `frontend/dist` is ignored, so frontend build must
+be run before app launch. Selection/cursor integration and runtime packaging
+remain for later phase steps.
