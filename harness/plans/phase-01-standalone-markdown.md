@@ -107,7 +107,7 @@ Runtime Python não executa npm e não depende de rede/CDN.
 
 ### 1 — Document/session/filesystem
 
-**Em andamento — núcleo implementado; validação parcial registrada abaixo.**
+**Concluída (2026-09-17).** Núcleo puro e adapter filesystem implementados e integrados às ações Open/Save/Save As na etapa 7.
 
 Criar tipos puros, protocolo e adapter UTF-8. Testar open/save/save-as, dirty,
 BOM, erros e snapshot. Conclusão: funciona sem Qt.
@@ -170,7 +170,13 @@ bundle do Preview separadamente.
 
 ### 7 — Open/Save/Save As
 
-Adicionar diálogos e integração dos casos de uso; testar path atual e UTF-8.
+**Concluída (2026-09-17).** Menu File oferece Open, Save e Save As integrados
+aos casos de uso e ao `FilesystemDocumentStore`. Open atualiza Editor, sessão
+e raiz de assets somente depois de leitura bem-sucedida. Save mantém proteção
+por token de versão; Save As pede confirmação antes de overwrite e não substitui
+destino alterado concorrentemente. Sessão pathless encaminha Save a Save As.
+Testes cobrem round-trip UTF-8/BOM, raízes, cancelamento/confirmação e conflito
+externo sem GUI clicks.
 
 ### 8 — Dirty/fechamento
 

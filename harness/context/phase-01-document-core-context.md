@@ -137,3 +137,16 @@ scheme handler. The asynchronous network callback test was removed as flaky, so
 a deterministic end-to-end asset request is residual validation risk. Runtime
 startup requires `npm run build` because generated `frontend/dist` remains
 ignored; the Preview trusted bundle is embedded in the local QRC-base shell.
+
+## Open/Save UI increment (2026-09-17)
+
+Phase 1 step 7 and the UI integration portion of step 1 are complete.
+`MainWindow` provides Open, Save, and Save As actions backed by the existing
+application use cases and filesystem adapter. Successful open switches the
+session, Editor text, and Preview asset root; failed read leaves the current
+session untouched. Save checks the optimistic version token. Save As asks before
+overwrite, and the adapter detects external destination changes before replace.
+A pathless session routes Save to Save As. Targeted pytest (29 passed, 1 skipped
+for restricted Windows symlink creation), Ruff, and mypy passed. Close/open dirty
+confirmation is intentionally the next step (8); no destructive data-loss
+prompt exists yet.
