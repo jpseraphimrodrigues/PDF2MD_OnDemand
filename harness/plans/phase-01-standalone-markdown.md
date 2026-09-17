@@ -145,8 +145,19 @@ navegação e assets ficam para etapas 5/10.
 
 ### 5 — Assets
 
-Implementar resolução controlada de imagens, path traversal e contexto. Avaliar
-qrc para internos e custom scheme/handler para documentos.
+**Concluída (2026-09-17, D-015).** Registrado `pdf2md-asset` via
+`QWebEngineUrlSchemeHandler` antes do QApplication; handler instalado somente
+no profile dedicado ao Preview. Sessões UUID autorizam somente a pasta do
+Markdown ativo e são revogáveis. Resolver canônico rejeita absolute/drive/UNC,
+file URLs, malformed encoding, traversal, destinos fora da raiz (inclusive
+symlink), diretórios e tipos fora de PNG/JPG/JPEG/GIF/WebP. Preview desliga
+acesso a arquivos locais/remotos, janelas JS e LocalStorage. O bundle confiável
+do Preview é incorporado em shell com origem base QRC para não habilitar
+`LocalContentCanAccessFileUrls`. Testes cobrem resolução, revogação, scheme
+flags, isolamento/settings do profile e reescrita/bloqueio de imagens no renderer.
+Uma execução Qt headless serviu um GIF real pelo handler; teste assíncrono
+completo foi instável e não é critério automatizado nesta etapa. Symlink test
+pula no Windows do ambiente quando criação não é permitida.
 
 ### 6 — Split UI
 

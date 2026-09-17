@@ -5,6 +5,7 @@ from __future__ import annotations
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtWidgets import QMainWindow, QSplitter
 
+from pdf2md_ondemand.application.asset_sessions import AssetSessionRegistry
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
 from pdf2md_ondemand.ui.desktop.preview_view import PreviewView
 
@@ -19,7 +20,8 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("PDF2MD_OnDemand")
         self.resize(960, 640)
         self.editor_view = EditorView()
-        self.preview_view = PreviewView()
+        self.asset_sessions = AssetSessionRegistry()
+        self.preview_view = PreviewView(self.asset_sessions)
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.editor_view)
         self.splitter.addWidget(self.preview_view)

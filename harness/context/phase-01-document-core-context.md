@@ -112,3 +112,28 @@ handler is read-only, serves regular files only, has no directory listing, and
 allows PNG/JPG/JPEG/GIF/WebP only; arbitrary SVG and user-selected external roots
 are out of scope. Scheme registration must happen at startup before profile
 creation. D-015 records this binding choice.
+
+## Preview asset handler increment (2026-09-17)
+
+Phase 1 step 5 is implemented per D-015. `pdf2md-asset` is registered in the
+entrypoint before QApplication; `PreviewView` owns an off-the-record dedicated
+`QWebEngineProfile` with `PreviewAssetHandler`, while the default/Editor profile
+has no handler. The Preview page and generated trusted bundle are combined via
+`setHtml` under a QRC base URL, allowing `LocalContentCanAccessFileUrls=False`.
+Remote URL access, JS window opening and LocalStorage are also disabled.
+
+`AssetSessionRegistry` creates/revokes per-document UUID sessions rooted at the
+Markdown parent directory. The path resolver decodes UTF-8, rejects absolute,
+drive, UNC, backslash, malformed paths, traversal and unsupported extensions,
+then resolves canonically under root and accepts regular files only. Handler
+serves read-only PNG/JPG/JPEG/GIF/WebP MIME types, no listing. Renderer rewrites
+safe relative images only when a session exists and replaces invalid/no-session
+or non-HTTP(S) non-relative sources with `about:blank`; raw HTML remains off.
+
+Validation after the final layering change: focused pytest 19 passed, 1 skipped
+(symlink creation denied by Windows environment); Ruff and mypy passed; npm test
+passed. One offscreen QWebEngine run observed an actual GIF response through the
+scheme handler. The asynchronous network callback test was removed as flaky, so
+a deterministic end-to-end asset request is residual validation risk. Runtime
+startup requires `npm run build` because generated `frontend/dist` remains
+ignored; the Preview trusted bundle is embedded in the local QRC-base shell.

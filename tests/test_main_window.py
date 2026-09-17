@@ -20,7 +20,7 @@ class _Editor(QWidget):
 
 
 class _Preview(QWidget):
-    def __init__(self) -> None:
+    def __init__(self, sessions) -> None:
         super().__init__()
         self.rendered: list[str] = []
 
