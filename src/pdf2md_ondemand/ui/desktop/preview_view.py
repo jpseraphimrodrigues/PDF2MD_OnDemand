@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QUrl, Signal
+from PySide6.QtCore import QObject, QUrl, Signal
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -19,6 +19,8 @@ from pdf2md_ondemand.adapters.qt_asset_scheme import (
     PreviewAssetHandler,
 )
 from pdf2md_ondemand.application.asset_sessions import AssetSessionRegistry
+
+TRUSTED_PREVIEW_URL = "qrc:///pdf2md-preview/index.html"
 
 
 class PreviewView(QWebEngineView):
@@ -39,7 +41,7 @@ class PreviewView(QWebEngineView):
         self.profile = QWebEngineProfile(self)
         self.asset_handler = PreviewAssetHandler(sessions, self.profile)
         self.profile.installUrlSchemeHandler(SCHEME_NAME, self.asset_handler)
-        self.preview_page = PreviewPage(self.profile, self)
+        self.preview_page = PreviewPage(self.profile, self.profile)
         self.preview_page.externalLinkRequested.connect(self.externalLinkRequested)
         self.setPage(self.preview_page)
         settings = self.settings()
@@ -58,7 +60,7 @@ class PreviewView(QWebEngineView):
             '<script src="../dist/preview.js"></script>',
             f"<script>{bundle}</script>",
         )
-        self.setHtml(shell, QUrl("qrc:///pdf2md-preview/index.html"))
+        self.preview_page.load_trusted_html(shell, QUrl(TRUSTED_PREVIEW_URL))
         self.profile.downloadRequested.connect(lambda download: download.cancel())
 
     def render_markdown(self, markdown: str) -> None:
@@ -114,6 +116,15 @@ class PreviewPage(QWebEnginePage):
 
     externalLinkRequested = Signal(str)
 
+    def __init__(self, profile: QWebEngineProfile, parent: QObject) -> None:
+        super().__init__(profile, parent)
+        self._trusted_bootstrap_pending = False
+
+    def load_trusted_html(self, html: str, base_url: QUrl) -> None:
+        """Load the app-owned shell through Qt's internal one-shot data URL."""
+        self._trusted_bootstrap_pending = True
+        self.setHtml(html, base_url)
+
     def acceptNavigationRequest(
         self,
         url: QUrl | str,
@@ -122,8 +133,27 @@ class PreviewPage(QWebEnginePage):
     ) -> bool:
         if isinstance(url, str):
             url = QUrl(url)
+        if (
+            getattr(self, "_trusted_bootstrap_pending", False)
+            and url.scheme().lower() == "data"
+            and url.toString().startswith("data:text/html;charset=UTF-8,")
+            and is_main_frame
+            and navigation_type
+            == QWebEnginePage.NavigationType.NavigationTypeTyped
+        ):
+            self._trusted_bootstrap_pending = False
+            return True
         policy = navigation_policy(url.scheme())
-        if policy == "allow" and not is_main_frame:
+        if policy == "allow":
+            if url.scheme().lower() == "pdf2md-asset":
+                return not is_main_frame
+            return is_main_frame and url == QUrl(TRUSTED_PREVIEW_URL)
+        if (
+            url == QUrl("about:blank")
+            and is_main_frame
+            and navigation_type
+            == QWebEnginePage.NavigationType.NavigationTypeOther
+        ):
             return True
         if (
             policy == "external-confirmation"

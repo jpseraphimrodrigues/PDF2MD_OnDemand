@@ -202,10 +202,10 @@ e popups, desativa acesso remoto/file/localStorage e bloqueia schemes
 desconhecidos/perigosos. Navegação interna é limitada aos recursos em subframes;
 HTTP/HTTPS só emite pedido quando é link clicado no frame principal, abre
 confirmação e usa QDesktopServices após Yes. Redirects, subframes externos e
-assets em navegação principal são bloqueados sem abertura externa. Testes da
-policy e diálogo confirmam os caminhos permitidos/bloqueados. Redirect/click real
-no Chromium não foi automatizado; lógica 
-headless foi validada.
+assets em navegação principal são bloqueados sem abertura externa. O bootstrap
+confiável de `setHtml` consome uma única autorização interna para o data URL
+gerado por Qt; data URLs do documento continuam bloqueados. Testes cobrem policy,
+diálogo e bootstrap. Redirect/click real no Chromium não foi automatizado.
 
 ### 11 — Regressão/golden
 
@@ -230,7 +230,7 @@ nenhuma referência remota necessária ao runtime — atendido. Comandos:
 Cada etapa deve registrar objetivo, arquivos prováveis, dependências, testes e
 critério de conclusão antes de ser considerada completa.
 
-### Evidência parcial da etapa 1 (2026-09-17)
+### Evidência do núcleo da etapa 1 (2026-09-17)
 
 Implementados `Document`, `DocumentSession`, casos de uso open/save, porta
 `DocumentStore` e adapter de filesystem. O adapter preserva BOM UTF-8 e conteúdo
@@ -244,8 +244,8 @@ operação CAS atômica portátil; o token é revalidado imediatamente antes da
 substituição, reduzindo a janela de corrida. Em Save As sem overwrite, a criação
 de destino novo usa hard-link atômico para impedir que um arquivo criado
 concorrentemente seja substituído. `overwrite=True` autoriza `os.replace` para
-destino existente, com validação do token observado antes da escrita. A etapa
-permanece parcial: integração GUI continua pendente.
+destino existente, com validação do token observado antes da escrita. Integração
+com Open/Save/Save As concluída na etapa 7.
 
 ### Atualização de concorrência e Save As (2026-09-17)
 
@@ -294,31 +294,21 @@ Registrar comandos, resultados de fixtures e validação manual. Não declarar
 sucesso sem execução real.
 
 
-## Stop condition — decisão de assets pendente (2026-09-17)
+## Fase 1 concluída (2026-09-17)
 
-A execução autônoma pausa antes da etapa 5. O plano exige assets relativos
-resolvidos sob contexto autorizado e lista duas alternativas de produção:
-`QWebEngineUrlSchemeHandler` ou custom URL scheme; D-014 mantém a escolha aberta.
-A política de base e permissões afeta diretamente `Open/Save`, pois o documento
-pode ser standalone em qualquer diretório. Implementar sem decidir isso pode
-abrir filesystem além do diretório do documento ou criar URLs não portáveis.
-Nenhuma evidência atual seleciona uma alternativa ou define o contrato do
-contexto autorizado. Retomar decidindo/registrando: (a) scheme/handler e (b) se
-assets de uma nota standalone podem acessar somente o diretório pai do arquivo,
-ou uma raiz selecionada separadamente.
+A decisão de assets D-015 resolveu a parada anterior; as 12 etapas estão
+concluídas. Não houve alterações no motor PDF → Markdown.
 
-Etapas completas nesta execução: 2 Frontend, 3 Editor/bridge, 4 Preview e 6
-Split UI. Etapas 1 e 5, 7–12 permanecem incompletas; etapa 1 tem o núcleo
-implementado, porém ainda não integrado à UI.
+**Validação final:** `uv run --no-sync pytest --basetemp .pytest-temp-phase1-complete`
+(43 passed, 1 skipped porque a criação de symlink foi bloqueada pelo Windows);
+`uv run pdf2md` iniciado em modo offscreen e permaneceu ativo por 3 s; fluxo
+end-to-end real Open → Edit no CodeMirror → Preview com debounce → Save passou;
+`npm test` (5 passed), `ruff check src tests` e `mypy` passaram.
 
-## Decisão de assets resolvida (D-015, 2026-09-17)
-
-A etapa 5 usará o scheme `pdf2md-asset` servido por
-`QWebEngineUrlSchemeHandler`, registrado no startup e instalado somente no
-profile dedicado ao Preview. URLs carregam um `document-session-id`; cada sessão
-autoriza somente o diretório que contém seu Markdown e pode ser invalidada.
-Serão aceitos paths relativos cujo destino canônico permaneça sob essa raiz;
-absolute/drive/UNC/file URLs, traversal e symlinks escapando da raiz são
-rejeitados. Handler read-only, sem directory listing, somente arquivos regulares
-PNG/JPEG/GIF/WebP; SVG arbitrário fica desabilitado. Ver D-015 em
-`docs/DECISIONS.md` para a decisão normativa.
+**Riscos residuais:** teste de symlink depende de permissão do host; a requisição
+de asset pelo scheme foi observada numa execução Qt real, mas o teste assíncrono
+completo foi instável; teste de links/redirects é de policy, sem clique Chromium
+automatizado. Qt em offscreen emite avisos de GPU/fontes e ao destruir o profile
+(WebEnginePage ainda não destruído), sem falhas nos testes ou no smoke de startup.
+Bundle `frontend/dist` é gerado e ignorado; executar `npm run build` antes de
+iniciar a aplicação durante desenvolvimento.

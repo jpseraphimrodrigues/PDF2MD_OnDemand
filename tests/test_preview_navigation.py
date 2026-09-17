@@ -7,7 +7,11 @@ from unittest.mock import Mock
 from PySide6.QtCore import QUrl
 from PySide6.QtWebEngineCore import QWebEnginePage
 
-from pdf2md_ondemand.ui.desktop.preview_view import PreviewPage, navigation_policy
+from pdf2md_ondemand.ui.desktop.preview_view import (
+    TRUSTED_PREVIEW_URL,
+    PreviewPage,
+    navigation_policy,
+)
 
 
 def test_navigation_policy_allows_only_internal_and_external_http_schemes() -> None:
@@ -60,3 +64,41 @@ def test_preview_page_never_opens_redirects_or_subframe_external_urls() -> None:
         True,
     ) is False
     page.externalLinkRequested.emit.assert_not_called()
+
+
+def test_internal_pages_are_limited_to_preview_shell_and_asset_subresources() -> None:
+    page = type("PageHarness", (), {"externalLinkRequested": Mock()})()
+    other_navigation = QWebEnginePage.NavigationType.NavigationTypeOther
+
+    assert PreviewPage.acceptNavigationRequest(
+        page, QUrl(TRUSTED_PREVIEW_URL), other_navigation, True
+    ) is True
+    assert PreviewPage.acceptNavigationRequest(
+        page, QUrl("qrc:///other.html"), other_navigation, True
+    ) is False
+    assert PreviewPage.acceptNavigationRequest(
+        page, QUrl("pdf2md-asset://session/image.png"), other_navigation, False
+    ) is True
+    assert PreviewPage.acceptNavigationRequest(
+        page, QUrl("pdf2md-asset://session/image.png"), other_navigation, True
+    ) is False
+
+
+def test_data_url_is_allowed_only_for_one_trusted_set_html_bootstrap() -> None:
+    page = type(
+        "PageHarness",
+        (),
+        {"externalLinkRequested": Mock(), "_trusted_bootstrap_pending": True},
+    )()
+    bootstrap = QUrl("data:text/html;charset=UTF-8,%3Chtml%3Etrusted%3C/html%3E")
+    typed = QWebEnginePage.NavigationType.NavigationTypeTyped
+
+    assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is True
+    assert page._trusted_bootstrap_pending is False
+    assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is False
+    assert PreviewPage.acceptNavigationRequest(
+        page,
+        bootstrap,
+        QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+        True,
+    ) is False

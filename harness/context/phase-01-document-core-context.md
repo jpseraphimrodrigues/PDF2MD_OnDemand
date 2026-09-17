@@ -176,14 +176,16 @@ source. Focused pytest (18 passed), `npm test` (4 passed), Ruff, and mypy passed
 ## Preview navigation security increment (2026-09-17)
 
 Phase 1 step 10 is implemented. `PreviewPage` blocks unknown/dangerous schemes,
-permits internal QRC/custom asset resources only in non-main-frame navigation,
-and emits an external request only for an HTTP(S) `NavigationTypeLinkClicked` in
+permits only the exact trusted QRC shell in the main frame and custom asset
+resources in subframes, and emits an external request only for an HTTP(S) `NavigationTypeLinkClicked` in
 the main frame. The main window asks the user before passing the URL to
 `QDesktopServices`; redirects, automatic HTTP(S) navigations, and external
 subframes are blocked silently. Main-frame navigation to `pdf2md-asset` is also
 blocked. Preview downloads are cancelled, popups rejected, and local file,
 remote access, LocalStorage, and JS window opening are disabled. Raw HTML stays
 disabled by markdown-it; JS is enabled only for the trusted bundled app shell.
+Qt’s internal `setHtml` bootstrap data URL has a one-shot authorization; all
+other `data:` navigation remains blocked.
 Focused pytest (27 passed, 1 skipped due to Windows symlink restriction), Ruff,
 mypy, and `npm test` (4 passed) passed. Policy/UI tests are unit-level; real
 Chromium click/redirect navigation has not been exercised end-to-end.
@@ -198,3 +200,23 @@ filesystem core test verifies that exact fixture bytes survive open + Save As
 without normalization. Targeted pytest (10 passed), Ruff, mypy, and `npm test`
 (5 passed) passed. The golden documents present parser behavior; no extensions
 were added in this phase.
+
+
+## Standalone integration and Phase 1 completion (2026-09-17)
+
+Phase 1 step 12 is complete. `tests/test_entrypoint.py` confirms scheme
+registration precedes QApplication. A real offscreen WebEngine integration test
+opens a standalone Markdown file, reads it in CodeMirror, edits Unicode text,
+waits for the debounced Preview, and saves exact UTF-8 bytes. The CLI
+`uv run --no-sync pdf2md` smoke remained active for three seconds with offscreen
+Qt and was then stopped by the harness. Final validation: full pytest (43
+passed, 1 skipped because this Windows environment denied symlink creation),
+`npm test` (5 passed), Ruff, and mypy passed. All 12 phase steps are complete;
+there was no PDF engine work.
+
+Residuals: symlink escape test could not execute on this host; an actual Qt run
+served a GIF through the asset scheme, though its async asset assertion remains
+nondeterministic; navigation policy lacks a real Chromium click/redirect test.
+Headless Qt reports missing-font/GPU diagnostics and a profile/page destruction
+warning despite successful startup/tests. `frontend/dist` is generated and
+ignored, so developers must run the frontend build before launching the app.
