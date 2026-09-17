@@ -109,3 +109,6 @@ Desktop.ini
 # ----------------------------
 *.orig
 
+.pytest-temp*/
+.pytest-tmp*/
+.pytest-debug*/
