@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
 
 from pdf2md_ondemand.adapters.filesystem_document_store import (
@@ -56,21 +56,27 @@ class MainWindow(QMainWindow):
         self.editor_view.bridge.contentChanged.connect(self._schedule_preview)
         self.editor_view.bridge.contentChanged.connect(self._update_document_content)
         self._create_file_actions()
+        self._update_window_title()
 
-    def open_document_at(self, path: Path) -> DocumentSession:
-        """Open a Markdown file and make it the current editing session."""
+    def open_document_at(self, path: Path) -> DocumentSession | None:
+        """Switch to a Markdown file after resolving any dirty session."""
+        if not self._confirm_unsaved_changes():
+            return None
         session = open_document(path, self.document_store)
         self.document_session = session
         self.editor_view.bridge.setContent(session.document.content)
         self.preview_view.set_asset_root(path.parent)
         self._schedule_preview(session.document.content)
+        self._update_window_title()
         return session
 
     def save_current_to_disk(self) -> Path:
         """Save the current Editor text using the session's version token."""
         session = self._require_session()
         session.edit(self.editor_view.bridge.getContent())
-        return save_document(session, self.document_store)
+        path = save_document(session, self.document_store)
+        self._update_window_title()
+        return path
 
     def save_as_to(self, path: Path, *, overwrite: bool = False) -> Path:
         """Save the current Editor text to a chosen destination."""
@@ -80,6 +86,7 @@ class MainWindow(QMainWindow):
             session, path, self.document_store, overwrite=overwrite
         )
         self.preview_view.set_asset_root(saved_path.parent)
+        self._update_window_title()
         return saved_path
 
     def _require_session(self) -> DocumentSession:
@@ -90,6 +97,7 @@ class MainWindow(QMainWindow):
     def _update_document_content(self, markdown: str) -> None:
         if self.document_session is not None:
             self.document_session.edit(markdown)
+            self._update_window_title()
 
     def _create_file_actions(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -122,13 +130,12 @@ class MainWindow(QMainWindow):
         except DocumentReadError as exc:
             self._show_error("Could not open document", str(exc))
 
-    def _save_action(self) -> None:
+    def _save_action(self) -> bool:
         if self.document_session is None:
             self._show_error("Could not save document", "Open a Markdown file first.")
-            return
+            return False
         if self.document_session.document.path is None:
-            self._save_as_dialog()
-            return
+            return self._save_as_dialog()
         try:
             self.save_current_to_disk()
         except (
@@ -137,11 +144,13 @@ class MainWindow(QMainWindow):
             ExternalModificationError,
         ) as exc:
             self._show_error("Could not save document", str(exc))
+            return False
+        return True
 
-    def _save_as_dialog(self) -> None:
+    def _save_as_dialog(self) -> bool:
         if self.document_session is None:
             self._show_error("Could not save document", "Open a Markdown file first.")
-            return
+            return False
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save Markdown As",
@@ -149,7 +158,7 @@ class MainWindow(QMainWindow):
             "Markdown files (*.md);;All files (*)",
         )
         if not filename:
-            return
+            return False
         path = Path(filename)
         overwrite = False
         if path.exists():
@@ -161,7 +170,7 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
-                return
+                return False
             overwrite = True
         try:
             self.save_as_to(path, overwrite=overwrite)
@@ -172,6 +181,41 @@ class MainWindow(QMainWindow):
             ExternalModificationError,
         ) as exc:
             self._show_error("Could not save document", str(exc))
+            return False
+        return True
+
+    def _confirm_unsaved_changes(self) -> bool:
+        """Allow a document transition only after Save or explicit Discard."""
+        session = self.document_session
+        if session is None or not session.dirty:
+            return True
+        choice = QMessageBox.warning(
+            self,
+            "Unsaved changes",
+            "Save changes before continuing?",
+            QMessageBox.StandardButton.Save
+            | QMessageBox.StandardButton.Discard
+            | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if choice == QMessageBox.StandardButton.Save:
+            return self._save_action()
+        return choice == QMessageBox.StandardButton.Discard
+
+    def closeEvent(self, event: QCloseEvent) -> None:
+        if self._confirm_unsaved_changes():
+            event.accept()
+        else:
+            event.ignore()
+
+    def _update_window_title(self) -> None:
+        session = self.document_session
+        if session is None or session.document.path is None:
+            title = "PDF2MD_OnDemand"
+        else:
+            marker = "*" if session.dirty else ""
+            title = f"{session.document.path.name}{marker} - PDF2MD_OnDemand"
+        self.setWindowTitle(title)
 
     def _show_error(self, title: str, message: str) -> None:
         QMessageBox.critical(self, title, message)

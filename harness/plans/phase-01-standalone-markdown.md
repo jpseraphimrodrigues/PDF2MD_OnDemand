@@ -180,7 +180,11 @@ externo sem GUI clicks.
 
 ### 8 — Dirty/fechamento
 
-Atualizar título/estado e confirmação antes de fechar/abrir outro arquivo.
+**Concluída (2026-09-17).** Abrir outro arquivo e fechar a janela perguntam
+Save/Discard/Cancel quando a sessão está dirty. Save ou falha de Save bloqueiam
+a transição corretamente; Cancel preserva sessão/conteúdo. O título mostra nome
+do arquivo e `*` enquanto houver alterações, e limpa após salvar. Testes cobrem
+as decisões e os conflitos sem interação manual.
 
 ### 9 — Toolbar
 
@@ -304,3 +308,4 @@ absolute/drive/UNC/file URLs, traversal e symlinks escapando da raiz são
 rejeitados. Handler read-only, sem directory listing, somente arquivos regulares
 PNG/JPEG/GIF/WebP; SVG arbitrário fica desabilitado. Ver D-015 em
 `docs/DECISIONS.md` para a decisão normativa.
+

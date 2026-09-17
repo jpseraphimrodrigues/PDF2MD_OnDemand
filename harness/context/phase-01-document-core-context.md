@@ -150,3 +150,13 @@ A pathless session routes Save to Save As. Targeted pytest (29 passed, 1 skipped
 for restricted Windows symlink creation), Ruff, and mypy passed. Close/open dirty
 confirmation is intentionally the next step (8); no destructive data-loss
 prompt exists yet.
+
+## Dirty-state lifecycle increment (2026-09-17)
+
+Phase 1 step 8 is implemented. Before opening another file or closing the
+window, dirty sessions prompt Save/Discard/Cancel. Save routes through the
+existing save flow; any cancelled Save As or write/version conflict blocks the
+transition. Discard is explicit; Cancel leaves the current session/content
+intact. The window title shows the current basename and `*` while dirty, and
+updates after successful save/open. Focused pytest (14 passed), Ruff, and mypy
+passed. No autosave or multi-tab behavior was added.
