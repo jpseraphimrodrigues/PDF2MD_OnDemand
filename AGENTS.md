@@ -211,3 +211,95 @@ It is complete when:
 - user data safety was considered;
 - documentation reflects material changes;
 - no unrelated functionality was silently changed.
+
+---
+
+## CODEX ORCHESTRATION POLICY - COST CONTROL
+
+The project must optimize Codex usage aggressively.
+
+### Default model policy
+
+Use GPT-5.6 Luna with low reasoning by default.
+
+Do not automatically escalate to Terra, Sol, Astra, or higher reasoning effort.
+
+Model escalation requires explicit user instruction.
+
+### Subagent policy
+
+Subagents are optional tools, not mandatory workflow stages.
+
+Default workflow:
+
+1. Main agent understands the requested change.
+2. If the relevant code location is unknown, spawn ONE `pdf2md_explorer`.
+3. Reuse the explorer findings instead of rediscovering the repository.
+4. Spawn ONE `pdf2md_worker` for the narrowly scoped implementation.
+5. Validate with deterministic tests.
+6. Use `pdf2md_reviewer` only when the change is non-trivial or risky.
+
+Do not spawn agents merely because delegation is available.
+
+### Parallelism
+
+Use at most one subagent at a time.
+
+Do not create parallel workers.
+
+Do not allow subagents to create nested subagents.
+
+### Context economy
+
+Prefer:
+
+- rg/search;
+- targeted file reads;
+- git diff;
+- focused tests;
+- existing documentation;
+
+over broad repository scans.
+
+Do not ask each agent to rediscover the same project context.
+
+Do not repeatedly read the entire repository.
+
+### Review economy
+
+For normal changes, review the diff and directly affected tests.
+
+Do not perform a full-project review unless a concrete architectural
+or regression risk requires it.
+
+### Testing economy
+
+Prefer, in this order:
+
+1. specific test;
+2. affected module tests;
+3. related test group;
+4. full suite only when justified.
+
+Do not use another reasoning agent when a deterministic test can answer
+the question more reliably.
+
+### Current scope restriction
+
+Unless explicitly requested by the user, do not work on the internal
+PDF-to-Markdown conversion engine.
+
+Work may continue on:
+
+- application architecture;
+- editor;
+- preview;
+- project lifecycle;
+- persistence;
+- UI;
+- security;
+- tests;
+- infrastructure;
+- integration boundaries.
+
+
