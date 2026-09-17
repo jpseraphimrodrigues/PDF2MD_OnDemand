@@ -98,3 +98,17 @@ choice governs filesystem isolation and path portability and affects the
 upcoming Open/Save integration. Resume by deciding and recording the scheme /
 handler plus whether a standalone note may reference only its parent directory
 or an independently selected asset root. No asset resolution was implemented.
+
+## Asset boundary decision (D-015, 2026-09-17)
+
+The user resolved the step 5 architectural question. Use a registered
+`pdf2md-asset` custom scheme backed by `QWebEngineUrlSchemeHandler`, installed
+only into the Preview's dedicated `QWebEngineProfile`. URLs are
+`pdf2md-asset://<document-session-id>/<relative-path>`. Each active document
+session authorizes only the containing directory of its Markdown file and can
+be invalidated. Resolve decoded/normalized paths canonically and reject absolute,
+drive, UNC, file URLs, `..` escapes, and symlink targets outside the root. The
+handler is read-only, serves regular files only, has no directory listing, and
+allows PNG/JPG/JPEG/GIF/WebP only; arbitrary SVG and user-selected external roots
+are out of scope. Scheme registration must happen at startup before profile
+creation. D-015 records this binding choice.

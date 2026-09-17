@@ -275,3 +275,15 @@ ou uma raiz selecionada separadamente.
 Etapas completas nesta execução: 2 Frontend, 3 Editor/bridge, 4 Preview e 6
 Split UI. Etapas 1 e 5, 7–12 permanecem incompletas; etapa 1 tem o núcleo
 implementado, porém ainda não integrado à UI.
+
+## Decisão de assets resolvida (D-015, 2026-09-17)
+
+A etapa 5 usará o scheme `pdf2md-asset` servido por
+`QWebEngineUrlSchemeHandler`, registrado no startup e instalado somente no
+profile dedicado ao Preview. URLs carregam um `document-session-id`; cada sessão
+autoriza somente o diretório que contém seu Markdown e pode ser invalidada.
+Serão aceitos paths relativos cujo destino canônico permaneça sob essa raiz;
+absolute/drive/UNC/file URLs, traversal e symlinks escapando da raiz são
+rejeitados. Handler read-only, sem directory listing, somente arquivos regulares
+PNG/JPEG/GIF/WebP; SVG arbitrário fica desabilitado. Ver D-015 em
+`docs/DECISIONS.md` para a decisão normativa.

@@ -195,3 +195,28 @@ These require implementation spikes/evidence before final choice:
 6. Workspace note identity policy beyond path-based linking.
 7. Autosave default and conflict UX.
 8. Packaging strategy for Windows/Linux.
+
+## D-015 — Assets locais do Preview standalone
+
+**Status:** Accepted (2026-09-17)
+
+Assets do Preview são servidos pelo scheme `pdf2md-asset` via
+`QWebEngineUrlSchemeHandler`; `file://` não é usado para conteúdo do documento.
+O scheme deve ser registrado antes da criação de `QApplication`/profiles no
+startup. O handler é instalado somente no `QWebEngineProfile` dedicado ao
+Preview, mantendo o Editor sem acesso a esse serviço.
+
+As URLs têm a forma `pdf2md-asset://<document-session-id>/<relative-path>`.
+Cada sessão de documento recebe contexto de autorização próprio, com raiz no
+diretório que contém seu `.md`; invalidar/substituir a sessão revoga URLs
+anteriores. Nesta fase não há raiz externa escolhida pelo usuário.
+
+O handler aceita somente caminhos relativos. Após decoding, normalização e
+resolução canônica, o destino final precisa permanecer dentro da raiz da sessão.
+Caminhos absolutos, outras unidades, UNC, `file://`, traversal (`..`) e
+symlinks que resolvam para fora da raiz são rejeitados. O serviço é somente
+leitura, sem listagem de diretórios, e entrega apenas arquivos regulares.
+
+Na Fase 1, tipos aceitos são raster: PNG, JPEG/JPG, GIF e WebP. SVG arbitrário
+não é habilitado. O handler não conhece Markdown nem altera seu source; o
+renderer converte apenas referências relativas em URLs da sessão ativa.
