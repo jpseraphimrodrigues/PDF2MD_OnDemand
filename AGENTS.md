@@ -303,3 +303,109 @@ Work may continue on:
 - integration boundaries.
 
 
+
+---
+
+## AUTONOMOUS SEQUENTIAL DEVELOPMENT MODE
+
+When the user asks to continue a phase, milestone, or implementation plan,
+operate autonomously and sequentially until the requested scope is complete
+or a defined stop condition occurs.
+
+Do NOT ask for user confirmation between normal implementation steps.
+
+### Source of truth
+
+Use the relevant file under `harness/plans/` as the authoritative execution plan.
+
+Use the corresponding files under `harness/context/` for accumulated
+technical context.
+
+Do not invent a new roadmap when an existing phase plan already exists.
+
+### Sequential execution loop
+
+Repeat the following process until the phase or requested milestone is complete:
+
+1. Read the current phase plan and relevant context.
+2. Identify the next incomplete deliverable.
+3. Determine whether code location is already known.
+4. If necessary, use exactly one `pdf2md_explorer`.
+5. Define a narrow implementation task.
+6. Use exactly one `pdf2md_worker`.
+7. Run the smallest relevant deterministic tests.
+8. If tests fail:
+   - diagnose the failure;
+   - attempt a targeted correction;
+   - rerun the affected tests.
+9. For non-trivial or risky changes, use one `pdf2md_reviewer`.
+10. Fix blocking reviewer findings.
+11. Run the appropriate validation:
+    - pytest;
+    - Ruff;
+    - mypy;
+    as relevant to the changed code.
+12. Update the phase plan with completed work.
+13. Update the phase context with decisions, behavior and residual risks.
+14. Inspect `git diff`.
+15. Create a Git checkpoint commit for the completed logical unit.
+16. Continue automatically with the next incomplete deliverable.
+
+Do not stop merely to report that one intermediate step is complete.
+
+### Git policy
+
+After each coherent and verified implementation unit:
+
+- inspect the diff;
+- ensure tests relevant to the unit pass;
+- create a descriptive commit;
+- continue to the next unit.
+
+Do NOT push automatically.
+
+Do NOT rewrite or amend previous commits unless explicitly instructed.
+
+Do NOT commit failing code.
+
+### Stop conditions
+
+Stop autonomous execution and ask the user only when one of these occurs:
+
+1. A decision would materially change documented architecture.
+2. Two reasonable architectural alternatives exist and the existing
+   documentation does not resolve the choice.
+3. A new production dependency is required.
+4. Existing user data or files may be destructively migrated.
+5. A destructive Git operation would be required.
+6. Required credentials, secrets or external access are unavailable.
+7. Tests continue failing after two focused correction attempts.
+8. The requested phase or milestone is complete.
+9. Work would enter the PDF -> Markdown conversion engine, unless the user
+   explicitly included that engine in the requested scope.
+
+Ordinary implementation choices are NOT stop conditions.
+
+### Scope discipline
+
+Do not expand the phase with optional features.
+
+Do not implement future-phase functionality early merely because it is nearby.
+
+Do not refactor unrelated working code.
+
+Prefer finishing one vertical slice before starting another.
+
+### Reporting
+
+During autonomous execution, keep intermediate messages concise.
+
+At completion or a stop condition, report:
+
+- deliverables completed;
+- commits created;
+- tests and static checks executed;
+- remaining incomplete items;
+- residual risks;
+- exact reason for stopping, if blocked.
+

@@ -10,7 +10,7 @@ model_reasoning_effort = "low"
 model_verbosity = "low"
 
 sandbox_mode = "workspace-write"
-approval_policy = "on-request"
+approval_policy = "never"
 
 review_model = "gpt-5.6-luna"
 
@@ -31,3 +31,4 @@ default_subagent_reasoning_effort = "low"
 
 # Evita mensagem extra no contexto quando um agente é interrompido.
 interrupt_message = false
+
