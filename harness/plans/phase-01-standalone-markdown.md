@@ -188,8 +188,12 @@ as decisões e os conflitos sem interação manual.
 
 ### 9 — Toolbar
 
-Implementar Bold, Italic, Heading, Link e Code via Qt → Python → bridge →
-transação CodeMirror.
+**Concluída (2026-09-17).** Toolbar Qt oferece Bold, Italic, Heading, Link e
+Code por whitelist estreita na bridge e transações únicas no CodeMirror. Seleções
+vazias inserem marcadores com cursor interno; Link usa placeholders editáveis
+`text`/`url`; Heading prefixa a linha atual. Undo/redo continuam no histórico
+nativo CodeMirror; sincronizações de conteúdo não entram no histórico. Testes
+Node cobrem specs e teste Qt headless prova formatação + Undo sobre Unicode.
 
 ### 10 — Segurança/links
 
@@ -308,4 +312,3 @@ absolute/drive/UNC/file URLs, traversal e symlinks escapando da raiz são
 rejeitados. Handler read-only, sem directory listing, somente arquivos regulares
 PNG/JPEG/GIF/WebP; SVG arbitrário fica desabilitado. Ver D-015 em
 `docs/DECISIONS.md` para a decisão normativa.
-

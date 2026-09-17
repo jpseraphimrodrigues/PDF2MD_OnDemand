@@ -160,3 +160,15 @@ transition. Discard is explicit; Cancel leaves the current session/content
 intact. The window title shows the current basename and `*` while dirty, and
 updates after successful save/open. Focused pytest (14 passed), Ruff, and mypy
 passed. No autosave or multi-tab behavior was added.
+
+## Markdown toolbar increment (2026-09-17)
+
+Phase 1 step 9 is implemented. Qt toolbar actions for Bold, Italic, Heading,
+Link, and Code pass only whitelisted command names through `EditorBridge`; the
+frontend maps each to one CodeMirror transaction. Empty formatting selections
+place the caret between markers. Empty Link inserts `[text](url)` and selects
+`text`; selected Link wraps the selection and selects the `url` placeholder.
+Heading adds `# ` at the current line start. Programmatic source synchronization
+is annotated outside history; formatting remains undoable by CodeMirror's native
+history. Headless QWebEngine proves bold + undo preserves the original Unicode
+source. Focused pytest (18 passed), `npm test` (4 passed), Ruff, and mypy passed.

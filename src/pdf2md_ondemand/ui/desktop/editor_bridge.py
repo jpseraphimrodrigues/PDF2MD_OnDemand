@@ -9,6 +9,9 @@ class EditorBridge(QObject):
     """Expose only Markdown text synchronization to the editor WebView."""
 
     contentChanged = Signal(str)
+    commandRequested = Signal(str)
+
+    _COMMANDS = frozenset({"bold", "italic", "heading", "link", "code"})
 
     def __init__(self, content: str = "", parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -24,3 +27,9 @@ class EditorBridge(QObject):
     @Slot(result=str)
     def getContent(self) -> str:
         return self._content
+
+    @Slot(str)
+    def applyCommand(self, command: str) -> None:
+        """Forward only the supported formatting commands to CodeMirror."""
+        if command in self._COMMANDS:
+            self.commandRequested.emit(command)

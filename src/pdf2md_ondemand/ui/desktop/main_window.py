@@ -6,7 +6,13 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
-from PySide6.QtWidgets import QFileDialog, QMainWindow, QMessageBox, QSplitter
+from PySide6.QtWidgets import (
+    QFileDialog,
+    QMainWindow,
+    QMessageBox,
+    QSplitter,
+    QToolBar,
+)
 
 from pdf2md_ondemand.adapters.filesystem_document_store import (
     DocumentReadError,
@@ -56,6 +62,7 @@ class MainWindow(QMainWindow):
         self.editor_view.bridge.contentChanged.connect(self._schedule_preview)
         self.editor_view.bridge.contentChanged.connect(self._update_document_content)
         self._create_file_actions()
+        self._create_format_toolbar()
         self._update_window_title()
 
     def open_document_at(self, path: Path) -> DocumentSession | None:
@@ -115,6 +122,30 @@ class MainWindow(QMainWindow):
         self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
         self.save_as_action.triggered.connect(self._save_as_dialog)
         file_menu.addAction(self.save_as_action)
+
+    def _create_format_toolbar(self) -> None:
+        self.format_toolbar = QToolBar("Markdown", self)
+        self.addToolBar(self.format_toolbar)
+        labels = {
+            "bold": "Bold",
+            "italic": "Italic",
+            "heading": "Heading",
+            "link": "Link",
+            "code": "Code",
+        }
+        self.format_actions: dict[str, QAction] = {}
+        for command, label in labels.items():
+            action = QAction(label, self)
+            action.triggered.connect(
+                lambda _checked=False, name=command: self._dispatch_editor_command(
+                    name
+                )
+            )
+            self.format_toolbar.addAction(action)
+            self.format_actions[command] = action
+
+    def _dispatch_editor_command(self, command: str) -> None:
+        self.editor_view.bridge.applyCommand(command)
 
     def _open_dialog(self) -> None:
         filename, _ = QFileDialog.getOpenFileName(

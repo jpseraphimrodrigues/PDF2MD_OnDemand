@@ -15,6 +15,7 @@ from pdf2md_ondemand.ui.desktop import main_window
 
 class _Bridge(QObject):
     contentChanged = Signal(str)
+    commandRequested = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
@@ -27,6 +28,10 @@ class _Bridge(QObject):
 
     def getContent(self) -> str:
         return self._content
+
+    def applyCommand(self, command: str) -> None:
+        if command in {"bold", "italic", "heading", "link", "code"}:
+            self.commandRequested.emit(command)
 
 
 class _Editor(QWidget):
@@ -72,6 +77,22 @@ def test_main_window_splits_panes_and_debounces_latest_editor_content(
     loop.exec()
 
     assert window.preview_view.rendered == ["último Ω"]
+    window.close()
+    app.processEvents()
+
+
+def test_format_toolbar_actions_dispatch_narrow_bridge_commands(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    app, window = _make_window(monkeypatch)
+    commands: list[str] = []
+    window.editor_view.bridge.commandRequested.connect(commands.append)
+
+    assert set(window.format_actions) == {"bold", "italic", "heading", "link", "code"}
+    for action in window.format_actions.values():
+        action.trigger()
+
+    assert commands == ["bold", "italic", "heading", "link", "code"]
     window.close()
     app.processEvents()
 
