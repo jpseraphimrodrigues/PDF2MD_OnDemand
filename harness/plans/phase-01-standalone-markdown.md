@@ -136,8 +136,12 @@ cursor ainda não foram exercitados por integração Qt, e produção deve execu
 
 ### 4 — Preview
 
-Integrar Preview WebView separado e markdown-it restritivo. Testar Markdown
-básico e que o preview não altera source.
+**Concluída (2026-09-17).** `PreviewView` usa QWebEngineView separado, sem
+QWebChannel ou QObject Python, e renderiza por `markdown-it` local com `html:false`.
+A interface Python envia texto JSON-serializado a `window.renderMarkdown`;
+source não é modificado. Teste com bundle real verifica Markdown básico, escape
+de HTML bruto/script e imutabilidade da entrada. Cobertura Qt end-to-end,
+navegação e assets ficam para etapas 5/10.
 
 ### 5 — Assets
 

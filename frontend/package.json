@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/editor.js src/preview.js --bundle --format=iife --outdir=dist --entry-names=[name]"
+    "build": "esbuild src/editor.js src/preview.js --bundle --format=iife --outdir=dist --entry-names=[name]",
+    "test": "npm run build && node --test test/*.test.cjs"
   },
   "dependencies": {
     "@codemirror/commands": "^6.8.1",

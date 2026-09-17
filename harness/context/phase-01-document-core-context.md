@@ -65,3 +65,15 @@ mypy, and frontend esbuild build passed. Qt headless emitted expected missing
 font/GPU warnings. Generated `frontend/dist` is ignored, so frontend build must
 be run before app launch. Selection/cursor integration and runtime packaging
 remain for later phase steps.
+
+## Preview renderer increment (2026-09-17)
+
+Phase 1 step 4 is implemented. `PreviewView` uses a separate QWebEngineView
+with no QWebChannel and no registered Python QObject. `render_markdown` passes
+JSON-serialized Markdown to the local `window.renderMarkdown` API. The frontend
+uses markdown-it with `html: false`, `linkify: true`, and `typographer: false`.
+An npm test builds the actual bundle and executes it with a minimal DOM shim;
+it verifies headings/emphasis, raw script escaping, and unchanged input source.
+Validation: `npm test` passed; previous Editor tests, Ruff and mypy passed.
+Preview's actual WebEngine page and security/navigation/assets are still to be
+covered in later steps.
