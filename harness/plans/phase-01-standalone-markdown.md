@@ -209,8 +209,11 @@ headless foi validada.
 
 ### 11 — Regressão/golden
 
-Adicionar fixtures de frontmatter, wikilink, math, Mermaid, unknown fence,
-directive e Unicode; comparar source salvo e HTML esperado.
+**Concluída (2026-09-17).** Fixture contém frontmatter, wikilink, math,
+Mermaid, fence desconhecida, directive e Unicode. Golden compara HTML real do
+bundle markdown-it, inclusive a renderização literal de extensões não
+implementadas; teste do core comprova round-trip byte a byte sem normalizar
+source. Não foram adicionadas extensões nem dependências.
 
 ### 12 — Integração
 

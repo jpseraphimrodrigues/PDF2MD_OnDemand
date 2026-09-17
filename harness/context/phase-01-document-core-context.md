@@ -187,3 +187,14 @@ disabled by markdown-it; JS is enabled only for the trusted bundled app shell.
 Focused pytest (27 passed, 1 skipped due to Windows symlink restriction), Ruff,
 mypy, and `npm test` (4 passed) passed. Policy/UI tests are unit-level; real
 Chromium click/redirect navigation has not been exercised end-to-end.
+
+## Phase 1 regression golden increment (2026-09-17)
+
+Phase 1 step 11 is implemented. A Markdown fixture contains frontmatter,
+`[[wikilink]]`, math, Mermaid, an unknown fenced language, an unknown directive,
+and Unicode. The actual bundled markdown-it renderer is compared to a checked-in
+HTML golden. It renders unsupported syntax as literal Markdown/code while the
+filesystem core test verifies that exact fixture bytes survive open + Save As
+without normalization. Targeted pytest (10 passed), Ruff, mypy, and `npm test`
+(5 passed) passed. The golden documents present parser behavior; no extensions
+were added in this phase.

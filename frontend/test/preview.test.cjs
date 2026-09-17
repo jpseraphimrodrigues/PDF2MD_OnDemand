@@ -27,3 +27,25 @@ test("preview renders Markdown, escapes raw HTML, and leaves editor source alone
   context.window.renderMarkdown("![without session](sibling.png)");
   assert.match(article.innerHTML, /src="about:blank"/);
 });
+
+test("Phase 1 regression fixture matches the Markdown-it golden", () => {
+  const fixture = fs.readFileSync("test/fixtures/phase1-regression.md");
+  const source = fixture.toString("utf8");
+  const golden = fs.readFileSync("test/golden/phase1-regression.html", "utf8");
+  const article = {innerHTML: ""};
+  const context = {
+    document: {querySelector: selector => selector === "#preview" ? article : null},
+    window: {},
+  };
+
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  context.window.renderMarkdown(source);
+
+  assert.equal(article.innerHTML, golden);
+  assert.equal(fixture.toString("utf8"), source);
+  assert.match(article.innerHTML, /\[\[nota-relacionada\]\]/);
+  assert.match(article.innerHTML, /\$x\^2 \+ y\^2 = z\^2\$/);
+  assert.match(article.innerHTML, /class="language-mermaid"/);
+  assert.match(article.innerHTML, /class="language-unknown-language"/);
+  assert.match(article.innerHTML, /\{\{ custom directive \}\}/);
+});
