@@ -28,8 +28,13 @@ class BuildPy(_build_py):
         package_frontend.mkdir(parents=True, exist_ok=True)
         for source in (FRONTEND / "src").glob("*.html"):
             shutil.copy2(source, package_frontend / source.name)
-        for name in ("editor.js", "preview.js"):
+        for name in ("editor.js", "preview.js", "preview.css", "mermaid.js"):
             shutil.copy2(FRONTEND / "dist" / name, package_frontend / name)
+        shutil.copytree(
+            FRONTEND / "dist" / "licenses",
+            package_frontend / "licenses",
+            dirs_exist_ok=True,
+        )
 
 
 def _build_frontend() -> None:

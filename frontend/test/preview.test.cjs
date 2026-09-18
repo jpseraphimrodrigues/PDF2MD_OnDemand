@@ -46,8 +46,154 @@ test("Phase 1 regression fixture matches the Markdown-it golden", () => {
   assert.equal(article.innerHTML.replace(/\r\n/g, "\n"), golden.replace(/\r\n/g, "\n"));
   assert.equal(fixture.toString("utf8"), source);
   assert.match(article.innerHTML, /class="wikilink">nota-relacionada<\/a>/);
-  assert.match(article.innerHTML, /\$x\^2 \+ y\^2 = z\^2\$/);
+  assert.match(article.innerHTML, /class="katex"/);
   assert.match(article.innerHTML, /class="language-mermaid"/);
   assert.match(article.innerHTML, /class="language-unknown-language"/);
   assert.match(article.innerHTML, /\{\{ custom directive \}\}/);
+});
+
+test("preview renders inline and block TeX locally and preserves bad input", () => {
+  const article = {innerHTML: ""};
+  const context = {
+    document: {querySelector: selector => selector === "#preview" ? article : null},
+    window: {},
+  };
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  const source = "Inline $x^2$ and \\(\\frac{1}{2}\\).\n\n$$\n\\int_0^1 x\\,dx\n$$\n\nBad $\\unknowncommand{$";
+  context.window.renderMarkdown(source);
+
+  assert.equal(source.includes("$x^2$"), true);
+  assert.match(article.innerHTML, /class="katex"/);
+  assert.match(article.innerHTML, /class="katex-display"/);
+  assert.match(article.innerHTML, /katex-error/);
+});
+
+test("Mermaid rendering is strict and keeps source when diagram parsing fails", async () => {
+  const code = {textContent: "graph TD\n  A --> B"};
+  const article = {
+    innerHTML: "",
+    querySelectorAll: selector => selector.startsWith("pre") ? [code] : [],
+  };
+  let configuration;
+  const context = {
+    document: {
+      querySelector: selector => selector === "#preview" ? article : null,
+      createElement: () => ({className: "", innerHTML: ""}),
+    },
+    window: {
+      mermaid: {
+        initialize: options => { configuration = options; },
+        render: async () => { throw new Error("invalid diagram"); },
+      },
+    },
+  };
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  await context.window.renderMarkdown("```mermaid\ngraph TD\n  A --> B\n```");
+
+  assert.equal(configuration.securityLevel, "strict");
+  assert.equal(configuration.startOnLoad, false);
+  assert.equal(configuration.maxTextSize, 100000);
+  assert.equal(configuration.maxEdges, 500);
+  assert.equal(configuration.flowchart.htmlLabels, false);
+  assert.match(article.innerHTML, /language-mermaid/);
+  assert.match(article.innerHTML, /A --&gt; B/);
+});
+
+test("Mermaid diagrams are replaced with renderer output", async () => {
+  const code = {
+    textContent: "graph LR\n  A --> B",
+    parentElement: {replaceWith: value => { article.replacement = value; }},
+  };
+  const article = {
+    innerHTML: "",
+    querySelectorAll: selector => selector.startsWith("pre") ? [code] : [],
+  };
+  const context = {
+    document: {
+      querySelector: selector => selector === "#preview" ? article : null,
+      createElement: () => ({className: "", innerHTML: ""}),
+    },
+    window: {
+      mermaid: {
+        initialize: () => {},
+        render: async (_id, source) => ({svg: `<svg>${source}</svg>`}),
+      },
+    },
+  };
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  await context.window.renderMarkdown("```mermaid\ngraph LR\n  A --> B\n```");
+
+  assert.equal(article.replacement.className, "mermaid-diagram");
+  assert.match(article.replacement.innerHTML, /<svg>graph LR/);
+});
+
+test("a late Mermaid render cannot replace a newer preview", async () => {
+  let finishOldRender;
+  let queryCount = 0;
+  const replacements = [];
+  const firstCode = {
+    textContent: "old diagram",
+    parentElement: {replaceWith: value => replacements.push(value)},
+  };
+  const article = {
+    innerHTML: "",
+    querySelectorAll: selector => selector.startsWith("pre") && ++queryCount === 1
+      ? [firstCode]
+      : [],
+  };
+  const context = {
+    document: {
+      querySelector: selector => selector === "#preview" ? article : null,
+      createElement: () => ({className: "", innerHTML: ""}),
+    },
+    window: {
+      mermaid: {
+        initialize: () => {},
+        render: () => new Promise(resolve => { finishOldRender = resolve; }),
+      },
+    },
+  };
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  const oldRender = context.window.renderMarkdown("```mermaid\nold diagram\n```");
+  await context.window.renderMarkdown("new content");
+  finishOldRender({svg: "<svg></svg>"});
+  await oldRender;
+
+  assert.match(article.innerHTML, /new content/);
+  assert.equal(replacements.length, 0);
+});
+
+test("documented blockquote callouts get a safe title and styling class", () => {
+  const marker = {textContent: "[!WARNING] Disk nearly full", remove() { this.removed = true; }};
+  const paragraph = {firstChild: marker};
+  const inserted = [];
+  const classes = [];
+  const blockquote = {
+    querySelector: () => paragraph,
+    classList: {add: (...values) => classes.push(...values)},
+    insertBefore: (title, before) => inserted.push({title, before}),
+  };
+  const article = {
+    innerHTML: "",
+    querySelectorAll: selector => selector === "blockquote" ? [blockquote] : [],
+  };
+  const context = {
+    document: {
+      querySelector: selector => selector === "#preview" ? article : null,
+      createElement: () => ({className: "", textContent: ""}),
+    },
+    window: {},
+  };
+  vm.runInNewContext(fs.readFileSync("dist/preview.js", "utf8"), context);
+  context.window.renderMarkdown("> [!WARNING] Disk nearly full");
+
+  assert.deepEqual(classes, ["callout", "callout-warning"]);
+  assert.equal(inserted[0].title.className, "callout-title");
+  assert.equal(inserted[0].title.textContent, "Disk nearly full");
+  assert.equal(marker.textContent, "");
+
+  marker.textContent = "[!CUSTOM] keep this marker";
+  context.window.renderMarkdown("> [!CUSTOM] keep this marker");
+  assert.deepEqual(classes, ["callout", "callout-warning"]);
+  assert.equal(marker.textContent, "[!CUSTOM] keep this marker");
 });

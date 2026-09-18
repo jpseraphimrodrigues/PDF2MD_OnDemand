@@ -220,3 +220,11 @@ leitura, sem listagem de diretórios, e entrega apenas arquivos regulares.
 Na Fase 1, tipos aceitos são raster: PNG, JPEG/JPG, GIF e WebP. SVG arbitrário
 não é habilitado. O handler não conhece Markdown nem altera seu source; o
 renderer converte apenas referências relativas em URLs da sessão ativa.
+
+## D-016 - Renderizadores graficos locais no Preview
+
+**Status:** Accepted (2026-09-18)
+
+Mermaid, matematica TeX e callouts sao renderizados por bundles e estilos locais no Preview. O runtime nao acessa CDN nem rede. Mermaid usa modo estrito de seguranca, limites para texto e arestas e mantem o bloco fonte se a renderizacao falhar. KaTeX renderiza o subconjunto TeX documentado com delimitadores compativeis com MathJax; formulas invalidas mantem a fonte visivel. Callouts usam o marcador interoperavel de blockquote documentado em MARKDOWN_COMPATIBILITY.md.
+
+Assets SVG fornecidos pelo usuario continuam desabilitados por D-015. SVG produzido pelo Mermaid sob configuracao estrita e saida do renderer, nao um arquivo SVG carregado do workspace. A renderizacao e somente leitura e nao altera Markdown.

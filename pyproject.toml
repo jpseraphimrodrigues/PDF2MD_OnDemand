@@ -23,7 +23,12 @@ where = ["src"]
 build_py = "pdf2md_build.BuildPy"
 
 [tool.setuptools.package-data]
-pdf2md_ondemand = ["ui/desktop/frontend/*.html", "ui/desktop/frontend/*.js"]
+pdf2md_ondemand = [
+    "ui/desktop/frontend/*.html",
+    "ui/desktop/frontend/*.js",
+    "ui/desktop/frontend/*.css",
+    "ui/desktop/frontend/licenses/*.txt",
+]
 
 
 [tool.ruff]

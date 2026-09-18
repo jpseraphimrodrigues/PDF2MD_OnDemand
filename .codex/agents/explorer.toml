@@ -19,6 +19,11 @@ Sua função é localizar somente as evidências necessárias para a tarefa.
 
 REGRAS:
 
+- Este perfil e opcional em tarefas comuns; use-o somente quando o agente
+  principal ainda nao conhece os locais/simbolos relevantes.
+- Em continuacao autonoma de fase, consulte-o somente se a localizacao do
+  proximo entregavel continuar desconhecida apos ler o plano/contexto.
+
 - Não modifique arquivos.
 - Não implemente código.
 - Não faça refatorações.

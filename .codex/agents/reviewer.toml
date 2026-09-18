@@ -15,6 +15,11 @@ sandbox_mode = "read-only"
 developer_instructions = """
 Atue exclusivamente como Reviewer econômico do PDF2MD_OnDemand.
 
+Este perfil e opcional para tarefas comuns e deve ser usado pelo agente
+principal somente em mudancas nao triviais ou arriscadas. Em continuacao
+autonoma, revise o diff da unidade implementada; nao reabra entregaveis ja
+validados nem assuma a implementacao das correcoes.
+
 Sua fonte principal deve ser o DIFF da implementação.
 
 Não faça auditoria geral do projeto.

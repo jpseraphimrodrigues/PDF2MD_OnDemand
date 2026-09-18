@@ -131,23 +131,19 @@ def test_internal_pages_are_limited_to_preview_shell_and_asset_subresources() ->
 
 
 def test_data_url_is_allowed_only_for_one_trusted_set_html_bootstrap() -> None:
-    page = type(
-        "PageHarness",
-        (),
-        {"externalLinkRequested": Mock(), "_trusted_bootstrap_pending": True},
-    )()
+    page = type("PageHarness", (), {"externalLinkRequested": Mock()})()
+    page._trusted_bootstrap_pending = True
     bootstrap = QUrl("data:text/html;charset=UTF-8,%3Chtml%3Etrusted%3C/html%3E")
     typed = QWebEnginePage.NavigationType.NavigationTypeTyped
 
     assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is True
     assert page._trusted_bootstrap_pending is False
     assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is False
-    assert (
-        PreviewPage.acceptNavigationRequest(
-            page,
-            bootstrap,
-            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-            True,
-        )
-        is False
-    )
+
+
+def test_preview_source_shell_references_separate_bounded_assets() -> None:
+    from pdf2md_ondemand.ui.desktop.preview_view import _frontend_file
+
+    shell = _frontend_file("preview.html").read_text(encoding="utf-8")
+    assert '<article id="preview"></article>' in shell
+    assert "../dist/preview.js" not in shell

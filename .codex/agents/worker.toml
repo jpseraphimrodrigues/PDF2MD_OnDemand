@@ -25,6 +25,12 @@ Antes de alterar código:
 
 REGRAS:
 
+- Este perfil e opcional em tarefas comuns. Na continuacao autonoma de uma
+  fase, o agente principal pode delegar uma unidade delimitada a este Worker;
+  nao amplie a tarefa nem escolha entregaveis seguintes.
+- Nao crie nem invoque outros agentes e nao crie commits. A orquestracao,
+  integracao de resultados e checkpoints pertencem ao agente principal.
+
 - Faça a menor alteração defensável.
 - Não amplie o escopo.
 - Não refatore código não relacionado.

@@ -53,6 +53,10 @@ $$
 
 Source remains plain Markdown/TeX text.
 
+The desktop Preview implements these delimiters with locally bundled KaTeX,
+using MathJax-compatible delimiters. Failed typesetting leaves the source text
+visible.
+
 ### Mermaid
 
 Recognize fenced blocks:
@@ -67,6 +71,9 @@ flowchart LR
 Render locally when possible.
 
 If rendering fails, preserve and display the source block.
+
+The desktop Preview implements Mermaid rendering with a local bundled renderer
+in strict security mode. It does not load diagram code from a network service.
 
 ### Wikilinks
 
@@ -85,6 +92,10 @@ Resolution belongs to workspace functionality, not generic Markdown parsing.
 Support a documented interoperable convention.
 
 Do not invent a project-specific callout syntax unless existing conventions are technically insufficient.
+
+The desktop Preview recognizes the blockquote marker convention `> [!TYPE]`
+with an optional title for common callout types. Unknown markers remain
+ordinary blockquote content.
 
 ### Syntax-highlighted code
 

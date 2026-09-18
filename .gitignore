@@ -103,6 +103,9 @@ Desktop.ini
 # ----------------------------
 # Caso algum Vault de teste seja criado dentro do repositório.
 .pdf2md/
+/_manual-editor-check/
+/_test-workspace-/
+/uv-85447c115b158419.lock
 
 # ----------------------------
 # Misc

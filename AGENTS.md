@@ -228,14 +228,18 @@ Model escalation requires explicit user instruction.
 
 ### Subagent policy
 
-Subagents are optional tools, not mandatory workflow stages.
+For ordinary tasks, subagents are optional. The main agent may complete a
+small, clear change directly; do not spawn an agent only because one is
+available.
 
-Default workflow:
+For ordinary implementation tasks, use this workflow only when delegation
+materially helps:
 
 1. Main agent understands the requested change.
 2. If the relevant code location is unknown, spawn ONE `pdf2md_explorer`.
 3. Reuse the explorer findings instead of rediscovering the repository.
-4. Spawn ONE `pdf2md_worker` for the narrowly scoped implementation.
+4. Delegate a narrowly scoped implementation to ONE `pdf2md_worker` when
+   implementation is delegated; otherwise the main agent implements it.
 5. Validate with deterministic tests.
 6. Use `pdf2md_reviewer` only when the change is non-trivial or risky.
 
@@ -312,6 +316,10 @@ When the user asks to continue a phase, milestone, or implementation plan,
 operate autonomously and sequentially until the requested scope is complete
 or a defined stop condition occurs.
 
+This autonomous mode is conditional on the user asking to continue a phase,
+milestone, or plan. It does not make subagents mandatory for ordinary fixes,
+reviews, or analysis requests.
+
 Do NOT ask for user confirmation between normal implementation steps.
 
 ### Source of truth
@@ -330,9 +338,12 @@ Repeat the following process until the phase or requested milestone is complete:
 1. Read the current phase plan and relevant context.
 2. Identify the next incomplete deliverable.
 3. Determine whether code location is already known.
-4. If necessary, use exactly one `pdf2md_explorer`.
+4. If the relevant code location is unknown, use exactly one
+   `pdf2md_explorer`; otherwise reuse the known location and context.
 5. Define a narrow implementation task.
-6. Use exactly one `pdf2md_worker`.
+6. Use exactly one `pdf2md_worker` for each delegated implementation unit.
+   The main agent may implement directly when delegation is unavailable or
+   prohibited by higher-priority instructions; record that deviation briefly.
 7. Run the smallest relevant deterministic tests.
 8. If tests fail:
    - diagnose the failure;
@@ -350,6 +361,12 @@ Repeat the following process until the phase or requested milestone is complete:
 14. Inspect `git diff`.
 15. Create a Git checkpoint commit for the completed logical unit.
 16. Continue automatically with the next incomplete deliverable.
+
+Keep generated test workspaces, manual-check notes, temporary files, and
+empty lock artifacts out of commits. Before each checkpoint, inspect both
+tracked and untracked changes and confirm every included file belongs to the
+unit. If repository policy or sandbox prevents a commit, record the intended
+checkpoint and continue under the sandbox override below.
 
 Do not stop merely to report that one intermediate step is complete.
 

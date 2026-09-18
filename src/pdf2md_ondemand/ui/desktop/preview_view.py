@@ -9,6 +9,7 @@ from PySide6.QtCore import QObject, QUrl, QUrlQuery, Signal
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
+    QWebEngineScript,
     QWebEngineSettings,
 )
 from PySide6.QtWebEngineWidgets import QWebEngineView
@@ -55,14 +56,12 @@ class PreviewView(QWebEngineView):
             QWebEngineSettings.WebAttribute.LocalStorageEnabled,
         ):
             settings.setAttribute(attribute, False)
+        self._install_frontend_scripts()
         self.loadFinished.connect(self._on_load_finished)
-        shell = _frontend_file("preview.html").read_text(encoding="utf-8")
-        bundle = _frontend_file("preview.js").read_text(encoding="utf-8")
-        shell = shell.replace(
-            '<script src="../dist/preview.js"></script>',
-            f"<script>{bundle}</script>",
+        self.preview_page.load_trusted_html(
+            _frontend_file("preview.html").read_text(encoding="utf-8"),
+            QUrl(TRUSTED_PREVIEW_URL),
         )
-        self.preview_page.load_trusted_html(shell, QUrl(TRUSTED_PREVIEW_URL))
         self.profile.downloadRequested.connect(lambda download: download.cancel())
 
     def render_markdown(self, markdown: str) -> None:
@@ -90,6 +89,21 @@ class PreviewView(QWebEngineView):
             self._set_frontend_session()
             self._render()
 
+    def _install_frontend_scripts(self) -> None:
+        scripts = self.page().scripts()
+        for name, source in (
+            ("mermaid", _frontend_file("mermaid.js").read_text(encoding="utf-8")),
+            ("preview-styles", _styles_script()),
+            ("preview", _frontend_file("preview.js").read_text(encoding="utf-8")),
+        ):
+            script = QWebEngineScript()
+            script.setName(name)
+            script.setInjectionPoint(QWebEngineScript.InjectionPoint.DocumentReady)
+            script.setWorldId(QWebEngineScript.ScriptWorldId.MainWorld)
+            script.setRunsOnSubFrames(False)
+            script.setSourceCode(source)
+            scripts.insert(script)
+
     def _set_frontend_session(self) -> None:
         session_id = json.dumps(self._asset_session_id, ensure_ascii=True)
         self.page().runJavaScript(f"window.setAssetSessionId({session_id})")
@@ -105,7 +119,7 @@ def _frontend_file(name: str) -> Path:
     if packaged.is_file():
         return packaged
     source = Path(__file__).resolve().parents[4] / "frontend" / "src" / name
-    if name.endswith(".js"):
+    if name.endswith((".js", ".css")):
         source = source.parents[1] / "dist" / name
     if not source.is_file():
         raise FileNotFoundError(
@@ -113,6 +127,15 @@ def _frontend_file(name: str) -> Path:
             "`npm run build` from the frontend directory, or reinstall the package."
         )
     return source
+
+
+def _styles_script() -> str:
+    styles = json.dumps(_frontend_file("preview.css").read_text(encoding="utf-8"))
+    return (
+        "const style = document.createElement('style');"
+        f"style.textContent = {styles};"
+        "document.documentElement.appendChild(style);"
+    )
 
 
 def navigation_policy(scheme: str) -> str:
@@ -136,7 +159,7 @@ class PreviewPage(QWebEnginePage):
         self._trusted_bootstrap_pending = False
 
     def load_trusted_html(self, html: str, base_url: QUrl) -> None:
-        """Load the app-owned shell through Qt's internal one-shot data URL."""
+        """Load the small app-owned shell; bundles run as Qt-injected scripts."""
         self._trusted_bootstrap_pending = True
         self.setHtml(html, base_url)
 
