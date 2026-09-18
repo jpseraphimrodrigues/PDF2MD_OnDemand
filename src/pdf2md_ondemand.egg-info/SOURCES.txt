@@ -5,6 +5,7 @@ pyproject.toml
 frontend/package-lock.json
 frontend/package.json
 frontend/scripts/copy-licenses.cjs
+frontend/src/editor.css
 frontend/src/editor.html
 frontend/src/editor.js
 frontend/src/editor_commands.js
@@ -41,13 +42,16 @@ src/pdf2md_ondemand/ports/workspace_index.py
 src/pdf2md_ondemand/ports/workspace_watcher.py
 src/pdf2md_ondemand/ui/__init__.py
 src/pdf2md_ondemand/ui/desktop/__init__.py
+src/pdf2md_ondemand/ui/desktop/document_tabs.py
 src/pdf2md_ondemand/ui/desktop/editor_bridge.py
 src/pdf2md_ondemand/ui/desktop/editor_view.py
 src/pdf2md_ondemand/ui/desktop/graph_view.py
 src/pdf2md_ondemand/ui/desktop/main_window.py
 src/pdf2md_ondemand/ui/desktop/preview_view.py
+src/pdf2md_ondemand/ui/desktop/themes/light.qss
 tests/test_asset_paths.py
 tests/test_document_session.py
+tests/test_document_tabs.py
 tests/test_editor_bridge.py
 tests/test_entrypoint.py
 tests/test_knowledge_graph.py
