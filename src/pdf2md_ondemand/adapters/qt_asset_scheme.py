@@ -20,6 +20,9 @@ SCHEME_NAME = b"pdf2md-asset"
 
 def register_asset_scheme() -> None:
     """Register the local secure scheme; call before QApplication/profile setup."""
+    existing = QWebEngineUrlScheme.schemeByName(SCHEME_NAME)
+    if existing.name() == SCHEME_NAME:
+        return
     scheme = QWebEngineUrlScheme(SCHEME_NAME)
     scheme.setSyntax(QWebEngineUrlScheme.Syntax.Host)
     scheme.setFlags(

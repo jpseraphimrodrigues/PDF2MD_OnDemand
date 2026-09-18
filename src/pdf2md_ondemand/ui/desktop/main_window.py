@@ -7,11 +7,17 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
+    QDockWidget,
     QFileDialog,
+    QInputDialog,
     QMainWindow,
     QMessageBox,
     QSplitter,
     QToolBar,
+    QTreeWidget,
+    QTreeWidgetItem,
+    QVBoxLayout,
+    QWidget,
 )
 
 from pdf2md_ondemand.adapters.filesystem_document_store import (
@@ -19,6 +25,7 @@ from pdf2md_ondemand.adapters.filesystem_document_store import (
     DocumentWriteError,
     FilesystemDocumentStore,
 )
+from pdf2md_ondemand.adapters.sqlite_workspace_index import SQLiteWorkspaceIndex
 from pdf2md_ondemand.application.asset_sessions import AssetSessionRegistry
 from pdf2md_ondemand.application.document_session import DocumentSession
 from pdf2md_ondemand.application.open_document import open_document
@@ -28,6 +35,14 @@ from pdf2md_ondemand.application.save_document import (
     UnsavedDocumentError,
     save_document,
     save_document_as,
+)
+from pdf2md_ondemand.application.workspace_session import (
+    WorkspaceDiscoveryError,
+    WorkspaceEntry,
+    WorkspaceSession,
+    discover_markdown,
+    open_workspace_search_result,
+    search_workspace,
 )
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
 from pdf2md_ondemand.ui.desktop.preview_view import PreviewView
@@ -44,6 +59,7 @@ class MainWindow(QMainWindow):
         self.resize(960, 640)
         self.document_store = FilesystemDocumentStore()
         self.document_session: DocumentSession | None = None
+        self.workspace_session: WorkspaceSession | None = None
         self.editor_view = EditorView()
         self.asset_sessions = AssetSessionRegistry()
         self.preview_view = PreviewView(self.asset_sessions)
@@ -53,6 +69,18 @@ class MainWindow(QMainWindow):
         self.splitter.addWidget(self.preview_view)
         self.splitter.setStretchFactor(0, 1)
         self.splitter.setStretchFactor(1, 1)
+        self.file_tree = QTreeWidget()
+        self.file_tree.setHeaderHidden(True)
+        self.file_tree.itemDoubleClicked.connect(self._open_tree_item)
+        self.workspace_sidebar = QWidget()
+        sidebar_layout = QVBoxLayout(self.workspace_sidebar)
+        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.addWidget(self.file_tree)
+        self._workspace_dock = QDockWidget("Workspace", self)
+        self._workspace_dock.setWidget(self.workspace_sidebar)
+        self._workspace_dock.setObjectName("workspaceDock")
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._workspace_dock)
+        self._workspace_dock.hide()
         self.setCentralWidget(self.splitter)
 
         self._pending_markdown = ""
@@ -113,6 +141,18 @@ class MainWindow(QMainWindow):
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
         self.open_action.triggered.connect(self._open_dialog)
         file_menu.addAction(self.open_action)
+        self.open_folder_action = QAction("Open Folder…", self)
+        self.open_folder_action.triggered.connect(self._open_folder_dialog)
+        file_menu.addAction(self.open_folder_action)
+        self.close_workspace_action = QAction("Close Workspace", self)
+        self.close_workspace_action.triggered.connect(self.close_workspace)
+        file_menu.addAction(self.close_workspace_action)
+        self.search_workspace_action = QAction("Search Workspace…", self)
+        self.search_workspace_action.triggered.connect(self._search_workspace_dialog)
+        file_menu.addAction(self.search_workspace_action)
+        self.rebuild_workspace_index_action = QAction("Rebuild Workspace Index", self)
+        self.rebuild_workspace_index_action.triggered.connect(self._rebuild_workspace_index)
+        file_menu.addAction(self.rebuild_workspace_index_action)
 
         self.save_action = QAction("&Save", self)
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
@@ -138,9 +178,7 @@ class MainWindow(QMainWindow):
         for command, label in labels.items():
             action = QAction(label, self)
             action.triggered.connect(
-                lambda _checked=False, name=command: self._dispatch_editor_command(
-                    name
-                )
+                lambda _checked=False, name=command: self._dispatch_editor_command(name)
             )
             self.format_toolbar.addAction(action)
             self.format_actions[command] = action
@@ -161,6 +199,110 @@ class MainWindow(QMainWindow):
             self.open_document_at(Path(filename))
         except DocumentReadError as exc:
             self._show_error("Could not open document", str(exc))
+
+    def open_workspace_at(self, root: Path) -> WorkspaceSession | None:
+        """Switch workspace only after discovery succeeds and dirty state resolves."""
+        try:
+            entries = discover_markdown(root)
+        except WorkspaceDiscoveryError as exc:
+            self._show_error("Could not open workspace", str(exc))
+            return None
+        if not self._confirm_unsaved_changes():
+            return None
+        session = WorkspaceSession.open(root)
+        self.workspace_session = session
+        self._populate_tree(entries)
+        self._workspace_dock.show()
+        self.setWindowTitle(f"{session.root.path.name} - PDF2MD_OnDemand")
+        return session
+
+    def _populate_tree(self, entries: tuple[WorkspaceEntry, ...]) -> None:
+        self.file_tree.clear()
+
+        def add(
+            parent: QTreeWidget | QTreeWidgetItem, nodes: tuple[WorkspaceEntry, ...]
+        ) -> None:
+            for node in nodes:
+                item = QTreeWidgetItem([node.name])
+                item.setData(0, Qt.ItemDataRole.UserRole, str(node.relative_path))
+                item.setData(0, Qt.ItemDataRole.UserRole + 1, node.is_directory)
+                parent.addTopLevelItem(item) if isinstance(
+                    parent, QTreeWidget
+                ) else parent.addChild(item)
+                if node.is_directory:
+                    add(item, node.children)
+
+        add(self.file_tree, entries)
+
+    def _open_folder_dialog(self) -> None:
+        folder = QFileDialog.getExistingDirectory(self, "Open Markdown Workspace")
+        if folder:
+            self.open_workspace_at(Path(folder))
+
+    def close_workspace(self) -> bool:
+        """Leave workspace context while retaining the currently open document."""
+        if self.workspace_session is None or not self._confirm_unsaved_changes():
+            return False
+        self.workspace_session.close()
+        self.workspace_session = None
+        self.file_tree.clear()
+        self._workspace_dock.hide()
+        self._update_window_title()
+        return True
+
+    def _open_tree_item(self, item: QTreeWidgetItem, _column: int) -> None:
+        if self.workspace_session is None or item.data(0, Qt.ItemDataRole.UserRole + 1):
+            return
+        try:
+            self.open_document_at(
+                self.workspace_session.root.path
+                / item.data(0, Qt.ItemDataRole.UserRole)
+            )
+        except DocumentReadError as exc:
+            self._show_error("Could not open document", str(exc))
+
+    def _search_workspace_dialog(self) -> None:
+        if self.workspace_session is None:
+            self._show_error("Workspace search", "Open a workspace first.")
+            return
+        query, accepted = QInputDialog.getText(self, "Search Workspace", "Text:")
+        if not accepted or not query:
+            return
+        try:
+            snapshot = SQLiteWorkspaceIndex(self.workspace_session.root.path).load()
+            results = search_workspace(snapshot, query)
+        except (OSError, ValueError) as exc:
+            self._show_error("Workspace search", f"Rebuild the index first: {exc}")
+            return
+        if not results:
+            QMessageBox.information(self, "Workspace search", "No matches found.")
+            return
+        result = results[0]
+        answer = QMessageBox.question(
+            self,
+            "Workspace search result",
+            (
+                f"{result.title} — {result.path}:{result.line}\n"
+                f"{result.snippet}\n\nOpen it?"
+            ),
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.Yes,
+        )
+        if answer == QMessageBox.StandardButton.Yes:
+            self.open_document_at(
+                open_workspace_search_result(self.workspace_session.root.path, result)
+            )
+
+    def _rebuild_workspace_index(self) -> None:
+        if self.workspace_session is None:
+            self._show_error("Workspace index", "Open a workspace first.")
+            return
+        try:
+            SQLiteWorkspaceIndex(self.workspace_session.root.path).rebuild()
+        except (OSError, ValueError) as exc:
+            self._show_error("Workspace index", str(exc))
+            return
+        QMessageBox.information(self, "Workspace index", "Index rebuilt.")
 
     def _save_action(self) -> bool:
         if self.document_session is None:
@@ -243,10 +385,22 @@ class MainWindow(QMainWindow):
     def _update_window_title(self) -> None:
         session = self.document_session
         if session is None or session.document.path is None:
-            title = "PDF2MD_OnDemand"
+            title = (
+                f"{self.workspace_session.root.path.name} - PDF2MD_OnDemand"
+                if self.workspace_session is not None
+                else "PDF2MD_OnDemand"
+            )
         else:
             marker = "*" if session.dirty else ""
-            title = f"{session.document.path.name}{marker} - PDF2MD_OnDemand"
+            workspace = (
+                f"{self.workspace_session.root.path.name} / "
+                if self.workspace_session is not None
+                else ""
+            )
+            title = (
+                f"{workspace}{session.document.path.name}{marker} "
+                "- PDF2MD_OnDemand"
+            )
         self.setWindowTitle(title)
 
     def _show_error(self, title: str, message: str) -> None:

@@ -8,6 +8,7 @@ from PySide6.QtCore import QEventLoop, QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QWidget
 from pytest import MonkeyPatch
 
+from pdf2md_ondemand.adapters.qt_asset_scheme import register_asset_scheme
 from pdf2md_ondemand.application.document_session import DocumentSession
 from pdf2md_ondemand.domain.document import Document
 from pdf2md_ondemand.ui.desktop import main_window
@@ -56,10 +57,55 @@ class _Preview(QWidget):
 
 
 def _make_window(monkeypatch: MonkeyPatch):
+    register_asset_scheme()
     app = QApplication.instance() or QApplication([])
     monkeypatch.setattr(main_window, "EditorView", _Editor)
     monkeypatch.setattr(main_window, "PreviewView", _Preview)
     return app, main_window.MainWindow()
+
+
+def test_workspace_tree_opens_note_and_preserves_cancelled_dirty_document(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from uuid import uuid4
+
+    root = Path("_test-workspace-") / uuid4().hex
+    root.mkdir(parents=True)
+    note = root / "note.md"
+    note.write_text("workspace note", encoding="utf-8")
+    app, window = _make_window(monkeypatch)
+    try:
+        assert window.open_workspace_at(root) is not None
+        assert window.file_tree.topLevelItemCount() == 1
+        original = root / "original.md"
+        original.write_text("base", encoding="utf-8")
+        session = window.open_document_at(original)
+        assert session is not None
+        window.editor_view.bridge.setContent("dirty")
+        monkeypatch.setattr(
+            main_window.QMessageBox,
+            "warning",
+            lambda *_args: QMessageBox.StandardButton.Cancel,
+        )
+        item = window.file_tree.topLevelItem(0)
+        window._open_tree_item(item, 0)
+        assert window.document_session is session
+        assert window.editor_view.bridge.getContent() == "dirty"
+        monkeypatch.setattr(
+            main_window.QMessageBox,
+            "warning",
+            lambda *_args: QMessageBox.StandardButton.Discard,
+        )
+        window._open_tree_item(item, 0)
+        assert window.document_session is not None
+        assert window.document_session.document.path == note.resolve()
+        assert window.editor_view.bridge.getContent() == "workspace note"
+    finally:
+        window.close()
+        app.processEvents()
+        import shutil
+
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_main_window_splits_panes_and_debounces_latest_editor_content(
