@@ -1,6 +1,7 @@
 [build-system]
-requires = ["setuptools>=75"]
-build-backend = "setuptools.build_meta"
+requires = ["setuptools>=75", "wheel"]
+build-backend = "pdf2md_build"
+backend-path = ["."]
 
 [project]
 name = "pdf2md-ondemand"
@@ -17,6 +18,13 @@ dev = ["mypy", "pytest", "pytest-cov", "ruff"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.cmdclass]
+build_py = "pdf2md_build.BuildPy"
+
+[tool.setuptools.package-data]
+pdf2md_ondemand = ["ui/desktop/frontend/*.html", "ui/desktop/frontend/*.js"]
+
 
 [tool.ruff]
 line-length = 88

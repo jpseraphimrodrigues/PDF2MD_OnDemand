@@ -55,7 +55,7 @@ class PreviewView(QWebEngineView):
             settings.setAttribute(attribute, False)
         self.loadFinished.connect(self._on_load_finished)
         shell = _frontend_file("preview.html").read_text(encoding="utf-8")
-        bundle = _frontend_file("../dist/preview.js").read_text(encoding="utf-8")
+        bundle = _frontend_file("preview.js").read_text(encoding="utf-8")
         shell = shell.replace(
             '<script src="../dist/preview.js"></script>',
             f"<script>{bundle}</script>",
@@ -98,7 +98,19 @@ class PreviewView(QWebEngineView):
 
 
 def _frontend_file(name: str) -> Path:
-    return Path(__file__).resolve().parents[4] / "frontend" / "src" / name
+    """Find packaged assets or generated development bundles."""
+    packaged = Path(__file__).resolve().parent / "frontend" / name
+    if packaged.is_file():
+        return packaged
+    source = Path(__file__).resolve().parents[4] / "frontend" / "src" / name
+    if name.endswith(".js"):
+        source = source.parents[1] / "dist" / name
+    if not source.is_file():
+        raise FileNotFoundError(
+            f"Frontend asset not found: {source}. Build it with `npm ci` and "
+            "`npm run build` from the frontend directory, or reinstall the package."
+        )
+    return source
 
 
 def navigation_policy(scheme: str) -> str:

@@ -28,5 +28,14 @@ class EditorView(QWebEngineView):
 
 
 def _frontend_file(name: str) -> Path:
-    """Locate the checked-in frontend shell and its generated local bundle."""
-    return Path(__file__).resolve().parents[4] / "frontend" / "src" / name
+    """Locate the packaged frontend or its source checkout equivalent."""
+    packaged = Path(__file__).resolve().parent / "frontend" / name
+    if packaged.is_file():
+        return packaged
+    source = Path(__file__).resolve().parents[4] / "frontend" / "src" / name
+    if not source.is_file():
+        raise FileNotFoundError(
+            f"Frontend asset not found: {source}. Build it with `npm ci` and "
+            "`npm run build` from the frontend directory, or reinstall the package."
+        )
+    return source
