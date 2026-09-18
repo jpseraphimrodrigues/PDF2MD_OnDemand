@@ -409,3 +409,31 @@ At completion or a stop condition, report:
 - residual risks;
 - exact reason for stopping, if blocked.
 
+---
+
+## GIT CHECKPOINT OVERRIDE FOR SANDBOXED CODEX
+
+The Codex sandbox may prevent writes inside `.git`.
+
+This must NOT block autonomous phase execution.
+
+When Git metadata is read-only:
+
+1. Do NOT attempt to change filesystem permissions.
+2. Do NOT modify ACLs.
+3. Do NOT use destructive Git operations.
+4. Do NOT stop merely because `git add` or `git commit` cannot run.
+5. Continue implementing the remaining phase deliverables sequentially.
+6. After each logical unit:
+   - run the relevant tests;
+   - inspect `git diff`;
+   - update the phase plan;
+   - update the phase context;
+   - record the intended checkpoint commit message in the plan/context.
+7. Leave all repository changes in the working tree.
+8. The human user will create the Git commits outside the Codex sandbox.
+
+Failure to create `.git/index.lock` is NOT a stop condition.
+
+Only stop for the architectural or technical stop conditions defined elsewhere
+in this AGENTS.md, or when the requested phase is complete.
