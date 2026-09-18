@@ -43,6 +43,7 @@ class _Editor(QWidget):
 
 class _Preview(QWidget):
     externalLinkRequested = Signal(str)
+    internalLinkRequested = Signal(str, str)
 
     def __init__(self, sessions) -> None:
         super().__init__()
@@ -77,6 +78,34 @@ def test_workspace_tree_opens_note_and_preserves_cancelled_dirty_document(
     try:
         assert window.open_workspace_at(root) is not None
         assert window.file_tree.topLevelItemCount() == 1
+        assert [node.id for node in window.graph_view._graph.nodes] == ["note.md"]
+        published_graph = window.graph_view._graph
+        graph_errors: list[str] = []
+        with monkeypatch.context() as patcher:
+
+            def fail_reconcile(_session):
+                raise OSError("index unavailable")
+
+            patcher.setattr(type(window.workspace_session), "reconcile", fail_reconcile)
+            patcher.setattr(
+                window, "_show_error", lambda _title, text: graph_errors.append(text)
+            )
+            window._refresh_graph(rebuild=True)
+        assert window.graph_view._graph is published_graph
+        assert graph_errors and "index unavailable" in graph_errors[0]
+        monkeypatch.setattr(main_window.QMessageBox, "information", lambda *_args: None)
+        added = root / "added.md"
+        added.write_text("new outside edit", encoding="utf-8")
+        window._rebuild_workspace_index()
+        assert window.file_tree.topLevelItemCount() == 2
+        assert {node.id for node in window.graph_view._graph.nodes} == {
+            "note.md",
+            "added.md",
+        }
+        added.unlink()
+        window._rebuild_workspace_index()
+        assert window.file_tree.topLevelItemCount() == 1
+        assert [node.id for node in window.graph_view._graph.nodes] == ["note.md"]
         original = root / "original.md"
         original.write_text("base", encoding="utf-8")
         session = window.open_document_at(original)
@@ -87,6 +116,10 @@ def test_workspace_tree_opens_note_and_preserves_cancelled_dirty_document(
             "warning",
             lambda *_args: QMessageBox.StandardButton.Cancel,
         )
+        window._open_graph_node("note.md")
+        assert window.document_session is session
+        assert window.editor_view.bridge.getContent() == "dirty"
+        assert window.graph_view._current_node == "original.md"
         item = window.file_tree.topLevelItem(0)
         window._open_tree_item(item, 0)
         assert window.document_session is session
@@ -129,6 +162,129 @@ def test_main_window_splits_panes_and_debounces_latest_editor_content(
     app.processEvents()
 
 
+def test_graph_canvas_renders_typed_edges_and_selectable_nodes(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from pdf2md_ondemand.domain.graph import (
+        GraphEdge,
+        GraphEdgeKind,
+        GraphNode,
+        KnowledgeGraph,
+    )
+
+    app, window = _make_window(monkeypatch)
+    graph = KnowledgeGraph(
+        (
+            GraphNode("a.md", "a.md", "A", ()),
+            GraphNode("b.md", "b.md", "B", ()),
+            GraphNode("lonely.md", "lonely.md", "Lonely", ()),
+        ),
+        (GraphEdge("a.md", "b.md", GraphEdgeKind.WIKILINK),),
+        (),
+    )
+    window.graph_view.set_graph(graph)
+    assert len(window.graph_view.canvas._node_items) == 3
+    assert len(window.graph_view.canvas._scene.items()) == 6
+    assert "(1)" in window.graph_view.orphans_filter.text()
+    window.graph_view.orphans_filter.setChecked(False)
+    assert len(window.graph_view.canvas._node_items) == 2
+    window.graph_view.orphans_filter.setChecked(True)
+    assert len(window.graph_view.canvas._node_items) == 3
+    window.graph_view.select_node("b.md")
+    assert window.graph_view._current_node == "b.md"
+    window.close()
+    app.processEvents()
+
+
+def test_preview_wikilink_uses_workspace_navigation_flow(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from shutil import rmtree
+    from uuid import uuid4
+
+    root = Path("_test-workspace-") / uuid4().hex
+    root.mkdir(parents=True)
+    source = root / "source.md"
+    target = root / "target.md"
+    source.write_text("[[target|Open target]]", encoding="utf-8")
+    target.write_text("# Target", encoding="utf-8")
+    app, window = _make_window(monkeypatch)
+    try:
+        assert window.open_workspace_at(root) is not None
+        assert window.open_document_at(source) is not None
+        window._open_preview_internal_link("target", "wikilink")
+        assert window.document_session is not None
+        assert window.document_session.document.path == target.resolve()
+    finally:
+        window.close()
+        app.processEvents()
+        rmtree(root, ignore_errors=True)
+
+
+def test_standalone_preview_link_still_works_with_workspace_open(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from shutil import rmtree
+    from uuid import uuid4
+
+    base = Path("_test-preview-standalone-") / uuid4().hex
+    workspace = base / "workspace"
+    workspace.mkdir(parents=True)
+    source = base / "source.md"
+    target = base / "target.md"
+    source.write_text("[Open](target.md)", encoding="utf-8")
+    target.write_text("# Target", encoding="utf-8")
+    (workspace / "inside.md").write_text("# Inside", encoding="utf-8")
+    app, window = _make_window(monkeypatch)
+    try:
+        assert window.open_workspace_at(workspace) is not None
+        assert window.open_document_at(source) is not None
+        window._open_preview_internal_link("target.md", "markdown")
+        assert window.document_session is not None
+        assert window.document_session.document.path == target.resolve()
+    finally:
+        window.close()
+        app.processEvents()
+        rmtree(base, ignore_errors=True)
+
+
+def test_minimal_workspace_note_and_preview_workflow(
+    monkeypatch: MonkeyPatch,
+) -> None:
+    from shutil import rmtree
+    from uuid import uuid4
+
+    root = Path("_test-workspace-") / uuid4().hex
+    root.mkdir(parents=True)
+    app, window = _make_window(monkeypatch)
+    try:
+        assert window.open_workspace_at(root) is not None
+        monkeypatch.setattr(
+            main_window.QInputDialog,
+            "getText",
+            lambda *_args: ("fresh note", True),
+        )
+        window._new_markdown_file()
+        note = root / "fresh note.md"
+        assert note.is_file()
+        assert window.document_session is not None
+        assert window.document_session.document.path == note.resolve()
+        assert window.file_tree.topLevelItemCount() == 1
+        assert [node.id for node in window.graph_view._graph.nodes] == ["fresh note.md"]
+
+        window.show_preview_action.setChecked(False)
+        assert window.preview_view.isHidden()
+        window.show_preview_action.setChecked(True)
+        assert not window.preview_view.isHidden()
+        assert window.close_note()
+        assert window.document_session is None
+        assert window.workspace_session is not None
+    finally:
+        window.close()
+        app.processEvents()
+        rmtree(root, ignore_errors=True)
+
+
 def test_format_toolbar_actions_dispatch_narrow_bridge_commands(
     monkeypatch: MonkeyPatch,
 ) -> None:
@@ -154,8 +310,7 @@ def test_external_link_requires_confirmation_before_opening_browser(
     monkeypatch.setattr(
         main_window.QMessageBox,
         "question",
-        lambda *args: prompts.append(args[2])
-        or QMessageBox.StandardButton.No,
+        lambda *args: prompts.append(args[2]) or QMessageBox.StandardButton.No,
     )
     monkeypatch.setattr(
         main_window.QDesktopServices,

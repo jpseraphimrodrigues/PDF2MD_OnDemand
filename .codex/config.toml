@@ -1,10 +1,5 @@
 #:schema https://developers.openai.com/codex/config-schema.json
 
-# ==========================================================
-# PDF2MD_OnDemand - Codex
-# Prioridade: consumo mínimo da janela
-# ==========================================================
-
 model = "gpt-5.6-luna"
 model_reasoning_effort = "low"
 model_verbosity = "low"
@@ -15,20 +10,10 @@ approval_policy = "never"
 review_model = "gpt-5.6-luna"
 
 
-# ==========================================================
-# MULTI-AGENT
-# ==========================================================
-
 [agents]
 
 enabled = true
-
-# Somente UM subagente aberto além do agente principal.
 max_concurrent_threads_per_session = 1
-
 default_subagent_model = "gpt-5.6-luna"
 default_subagent_reasoning_effort = "low"
-
-# Evita mensagem extra no contexto quando um agente é interrompido.
 interrupt_message = false
-

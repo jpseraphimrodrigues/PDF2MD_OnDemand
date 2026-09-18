@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QUrl, Signal
+from PySide6.QtCore import QObject, QUrl, QUrlQuery, Signal
 from PySide6.QtWebEngineCore import (
     QWebEnginePage,
     QWebEngineProfile,
@@ -27,6 +27,7 @@ class PreviewView(QWebEngineView):
     """Render Markdown in a local page without a Python WebChannel object."""
 
     externalLinkRequested = Signal(str)
+    internalLinkRequested = Signal(str, str)
 
     def __init__(
         self,
@@ -43,6 +44,7 @@ class PreviewView(QWebEngineView):
         self.profile.installUrlSchemeHandler(SCHEME_NAME, self.asset_handler)
         self.preview_page = PreviewPage(self.profile, self.profile)
         self.preview_page.externalLinkRequested.connect(self.externalLinkRequested)
+        self.preview_page.internalLinkRequested.connect(self.internalLinkRequested)
         self.setPage(self.preview_page)
         settings = self.settings()
         settings.setAttribute(QWebEngineSettings.WebAttribute.JavascriptEnabled, True)
@@ -127,6 +129,7 @@ class PreviewPage(QWebEnginePage):
     """Keep document links inside the trusted local renderer or ask externally."""
 
     externalLinkRequested = Signal(str)
+    internalLinkRequested = Signal(str, str)
 
     def __init__(self, profile: QWebEngineProfile, parent: QObject) -> None:
         super().__init__(profile, parent)
@@ -146,12 +149,27 @@ class PreviewPage(QWebEnginePage):
         if isinstance(url, str):
             url = QUrl(url)
         if (
+            url.scheme().lower() == "pdf2md-note"
+            and is_main_frame
+            and navigation_type
+            == QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+        ):
+            query = QUrlQuery(url)
+            target = query.queryItemValue(
+                "target", QUrl.ComponentFormattingOption.FullyDecoded
+            )
+            kind = query.queryItemValue(
+                "kind", QUrl.ComponentFormattingOption.FullyDecoded
+            )
+            if target and kind in {"wikilink", "markdown"}:
+                self.internalLinkRequested.emit(target, kind)
+            return False
+        if (
             getattr(self, "_trusted_bootstrap_pending", False)
             and url.scheme().lower() == "data"
             and url.toString().startswith("data:text/html;charset=UTF-8,")
             and is_main_frame
-            and navigation_type
-            == QWebEnginePage.NavigationType.NavigationTypeTyped
+            and navigation_type == QWebEnginePage.NavigationType.NavigationTypeTyped
         ):
             self._trusted_bootstrap_pending = False
             return True
@@ -163,8 +181,7 @@ class PreviewPage(QWebEnginePage):
         if (
             url == QUrl("about:blank")
             and is_main_frame
-            and navigation_type
-            == QWebEnginePage.NavigationType.NavigationTypeOther
+            and navigation_type == QWebEnginePage.NavigationType.NavigationTypeOther
         ):
             return True
         if (
@@ -176,8 +193,6 @@ class PreviewPage(QWebEnginePage):
             self.externalLinkRequested.emit(url.toString())
         return False
 
-    def createWindow(
-        self, window_type: QWebEnginePage.WebWindowType
-    ) -> QWebEnginePage:
+    def createWindow(self, window_type: QWebEnginePage.WebWindowType) -> QWebEnginePage:
         del window_type
         return None  # type: ignore[return-value]  # Qt treats nullptr as blocked popup.

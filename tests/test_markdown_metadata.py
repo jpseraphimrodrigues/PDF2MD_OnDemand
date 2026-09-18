@@ -3,8 +3,11 @@ from uuid import uuid4
 
 from pdf2md_ondemand.application.workspace_session import (
     build_workspace_snapshot,
+    create_markdown_file,
     extract_markdown_metadata,
     open_workspace_search_result,
+    resolve_markdown_link,
+    resolve_standalone_markdown_link,
     resolve_workspace_references,
     search_workspace,
 )
@@ -90,10 +93,47 @@ def test_workspace_search_is_casefolded_ordered_and_openable() -> None:
         results = search_workspace(snapshot, "query")
         assert [result.path for result in results] == [Path("a.md"), Path("z.md")]
         assert results[0].line == 1 and "Query" in results[0].snippet
-        assert open_workspace_search_result(root, results[0]) == (
-            root / "a.md"
-        ).resolve()
+        assert (
+            open_workspace_search_result(root, results[0]) == (root / "a.md").resolve()
+        )
         assert search_workspace(snapshot, " ") == ()
+    finally:
+        import shutil
+
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def test_preview_link_resolution_reuses_workspace_rules_and_stays_confined() -> None:
+    root = Path("_test-workspace-") / uuid4().hex
+    root.mkdir(parents=True)
+    try:
+        (root / "source.md").write_text(
+            "# Source\n\n[spaced](spaced%20target.md)", encoding="utf-8"
+        )
+        (root / "target.md").write_text("# Target", encoding="utf-8")
+        (root / "spaced target.md").write_text("# Spaced", encoding="utf-8")
+        snapshot = resolve_workspace_references(build_workspace_snapshot(root))
+        resolved = resolve_markdown_link(
+            snapshot, Path("source.md"), "target#target", "wikilink"
+        )
+        assert resolved.status == "resolved"
+        assert resolved.target_path == Path("target.md")
+        assert resolved.anchor_status == "resolved"
+        encoded_path = resolve_markdown_link(
+            snapshot, Path("source.md"), "spaced%20target.md", "markdown"
+        )
+        assert encoded_path.status == "resolved"
+        assert encoded_path.target_path == Path("spaced target.md")
+        assert (
+            resolve_standalone_markdown_link(
+                root / "source.md", "target.md", "markdown"
+            )
+            == (root / "target.md").resolve()
+        )
+        assert (
+            create_markdown_file(root, "new note") == (root / "new note.md").resolve()
+        )
+        assert (root / "new note.md").read_bytes() == b""
     finally:
         import shutil
 

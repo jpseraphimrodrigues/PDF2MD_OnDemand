@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QUrl
@@ -40,11 +42,14 @@ from pdf2md_ondemand.application.workspace_session import (
     WorkspaceDiscoveryError,
     WorkspaceEntry,
     WorkspaceSession,
+    create_markdown_file,
     discover_markdown,
     open_workspace_search_result,
+    resolve_standalone_markdown_link,
     search_workspace,
 )
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
+from pdf2md_ondemand.ui.desktop.graph_view import GraphView
 from pdf2md_ondemand.ui.desktop.preview_view import PreviewView
 
 PREVIEW_DEBOUNCE_MS = 200
@@ -64,6 +69,9 @@ class MainWindow(QMainWindow):
         self.asset_sessions = AssetSessionRegistry()
         self.preview_view = PreviewView(self.asset_sessions)
         self.preview_view.externalLinkRequested.connect(self._confirm_external_link)
+        self.preview_view.internalLinkRequested.connect(
+            self._open_preview_internal_link
+        )
         self.splitter = QSplitter(Qt.Orientation.Horizontal)
         self.splitter.addWidget(self.editor_view)
         self.splitter.addWidget(self.preview_view)
@@ -72,6 +80,7 @@ class MainWindow(QMainWindow):
         self.file_tree = QTreeWidget()
         self.file_tree.setHeaderHidden(True)
         self.file_tree.itemDoubleClicked.connect(self._open_tree_item)
+        self.file_tree.currentItemChanged.connect(self._tree_selection_changed)
         self.workspace_sidebar = QWidget()
         sidebar_layout = QVBoxLayout(self.workspace_sidebar)
         sidebar_layout.setContentsMargins(0, 0, 0, 0)
@@ -81,6 +90,14 @@ class MainWindow(QMainWindow):
         self._workspace_dock.setObjectName("workspaceDock")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._workspace_dock)
         self._workspace_dock.hide()
+        self.graph_view = GraphView(self)
+        self.graph_view.nodeActivated.connect(self._open_graph_node)
+        self.graph_view.nodeSelected.connect(self._select_graph_node)
+        self._graph_dock = QDockWidget("Knowledge Graph", self)
+        self._graph_dock.setObjectName("knowledgeGraphDock")
+        self._graph_dock.setWidget(self.graph_view)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._graph_dock)
+        self._graph_dock.hide()
         self.setCentralWidget(self.splitter)
 
         self._pending_markdown = ""
@@ -104,6 +121,7 @@ class MainWindow(QMainWindow):
         self.preview_view.set_asset_root(path.parent)
         self._schedule_preview(session.document.content)
         self._update_window_title()
+        self._sync_graph_selection()
         return session
 
     def save_current_to_disk(self) -> Path:
@@ -112,6 +130,7 @@ class MainWindow(QMainWindow):
         session.edit(self.editor_view.bridge.getContent())
         path = save_document(session, self.document_store)
         self._update_window_title()
+        self._refresh_graph_after_save(path)
         return path
 
     def save_as_to(self, path: Path, *, overwrite: bool = False) -> Path:
@@ -123,6 +142,7 @@ class MainWindow(QMainWindow):
         )
         self.preview_view.set_asset_root(saved_path.parent)
         self._update_window_title()
+        self._refresh_graph_after_save(saved_path)
         return saved_path
 
     def _require_session(self) -> DocumentSession:
@@ -137,6 +157,13 @@ class MainWindow(QMainWindow):
 
     def _create_file_actions(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        self.new_note_action = QAction("New Markdown File…", self)
+        self.new_note_action.triggered.connect(self._new_markdown_file)
+        file_menu.addAction(self.new_note_action)
+        self.close_note_action = QAction("Close Note", self)
+        self.close_note_action.triggered.connect(self.close_note)
+        file_menu.addAction(self.close_note_action)
+        file_menu.addSeparator()
         self.open_action = QAction("&Open…", self)
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
         self.open_action.triggered.connect(self._open_dialog)
@@ -151,8 +178,14 @@ class MainWindow(QMainWindow):
         self.search_workspace_action.triggered.connect(self._search_workspace_dialog)
         file_menu.addAction(self.search_workspace_action)
         self.rebuild_workspace_index_action = QAction("Rebuild Workspace Index", self)
-        self.rebuild_workspace_index_action.triggered.connect(self._rebuild_workspace_index)
+        self.rebuild_workspace_index_action.triggered.connect(
+            self._rebuild_workspace_index
+        )
         file_menu.addAction(self.rebuild_workspace_index_action)
+        self.show_graph_action = QAction("Knowledge Graph", self)
+        self.show_graph_action.setCheckable(True)
+        self.show_graph_action.toggled.connect(self._toggle_graph)
+        file_menu.addAction(self.show_graph_action)
 
         self.save_action = QAction("&Save", self)
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
@@ -163,6 +196,13 @@ class MainWindow(QMainWindow):
         self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
         self.save_as_action.triggered.connect(self._save_as_dialog)
         file_menu.addAction(self.save_as_action)
+
+        view_menu = self.menuBar().addMenu("&View")
+        self.show_preview_action = QAction("Show Preview", self)
+        self.show_preview_action.setCheckable(True)
+        self.show_preview_action.setChecked(True)
+        self.show_preview_action.toggled.connect(self.preview_view.setVisible)
+        view_menu.addAction(self.show_preview_action)
 
     def _create_format_toolbar(self) -> None:
         self.format_toolbar = QToolBar("Markdown", self)
@@ -209,10 +249,14 @@ class MainWindow(QMainWindow):
             return None
         if not self._confirm_unsaved_changes():
             return None
-        session = WorkspaceSession.open(root)
+        session = WorkspaceSession.open(root, index=SQLiteWorkspaceIndex(Path(root)))
         self.workspace_session = session
         self._populate_tree(entries)
+        self.graph_view.clear_graph()
         self._workspace_dock.show()
+        self._graph_dock.show()
+        self.show_graph_action.setChecked(True)
+        self._refresh_graph(rebuild=True)
         self.setWindowTitle(f"{session.root.path.name} - PDF2MD_OnDemand")
         return session
 
@@ -247,17 +291,54 @@ class MainWindow(QMainWindow):
         self.workspace_session = None
         self.file_tree.clear()
         self._workspace_dock.hide()
+        self._graph_dock.hide()
+        self.graph_view.clear_graph()
+        self.show_graph_action.setChecked(False)
+        self._update_window_title()
+        return True
+
+    def _new_markdown_file(self) -> None:
+        if self.workspace_session is None:
+            self._show_error("New Markdown File", "Open a workspace first.")
+            return
+        filename, accepted = QInputDialog.getText(
+            self, "New Markdown File", "Filename:"
+        )
+        if not accepted or not filename.strip() or not self._confirm_unsaved_changes():
+            return
+        try:
+            path = create_markdown_file(self.workspace_session.root.path, filename)
+            self.workspace_session.reconcile()
+            self._populate_tree(discover_markdown(self.workspace_session.root.path))
+            self._refresh_graph()
+            self.open_document_at(path)
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            self._show_error("Could not create Markdown file", str(exc))
+
+    def close_note(self) -> bool:
+        """Close the active document while preserving any open workspace."""
+        if self.document_session is None or not self._confirm_unsaved_changes():
+            return False
+        self.document_session = None
+        self.preview_view.set_asset_root(None)
+        self.editor_view.bridge.setContent("")
+        self._schedule_preview("")
+        self.graph_view.select_node(None)
+        self.file_tree.clearSelection()
         self._update_window_title()
         return True
 
     def _open_tree_item(self, item: QTreeWidgetItem, _column: int) -> None:
         if self.workspace_session is None or item.data(0, Qt.ItemDataRole.UserRole + 1):
             return
+        previous = self._current_workspace_node_id()
         try:
-            self.open_document_at(
+            opened = self.open_document_at(
                 self.workspace_session.root.path
                 / item.data(0, Qt.ItemDataRole.UserRole)
             )
+            if opened is None:
+                self._restore_navigation_selection(previous)
         except DocumentReadError as exc:
             self._show_error("Could not open document", str(exc))
 
@@ -271,7 +352,7 @@ class MainWindow(QMainWindow):
         try:
             snapshot = SQLiteWorkspaceIndex(self.workspace_session.root.path).load()
             results = search_workspace(snapshot, query)
-        except (OSError, ValueError) as exc:
+        except (OSError, ValueError, sqlite3.Error) as exc:
             self._show_error("Workspace search", f"Rebuild the index first: {exc}")
             return
         if not results:
@@ -293,16 +374,114 @@ class MainWindow(QMainWindow):
                 open_workspace_search_result(self.workspace_session.root.path, result)
             )
 
+    def _toggle_graph(self, visible: bool) -> None:
+        if visible and self.workspace_session is None:
+            self.show_graph_action.setChecked(False)
+            self._show_error("Knowledge Graph", "Open a workspace first.")
+            return
+        self._graph_dock.setVisible(visible)
+
+    def _refresh_graph(self, *, rebuild: bool = False) -> None:
+        session = self.workspace_session
+        if session is None:
+            return
+        try:
+            if rebuild:
+                session.reconcile()
+            graph = session.knowledge_graph()
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            self._show_error(
+                "Knowledge Graph", f"Could not refresh workspace graph: {exc}"
+            )
+            return
+        self.graph_view.set_graph(graph, self._current_workspace_node_id())
+
+    def _refresh_graph_after_save(self, path: Path) -> None:
+        if self.workspace_session is None:
+            return
+        try:
+            path.resolve().relative_to(self.workspace_session.root.path.resolve())
+        except ValueError:
+            self._sync_graph_selection()
+            return
+        self._refresh_graph(rebuild=True)
+
+    def _current_workspace_node_id(self) -> str | None:
+        if self.workspace_session is None or self.document_session is None:
+            return None
+        path = self.document_session.document.path
+        if path is None:
+            return None
+        try:
+            return (
+                path.resolve()
+                .relative_to(self.workspace_session.root.path.resolve())
+                .as_posix()
+            )
+        except ValueError:
+            return None
+
+    def _sync_graph_selection(self) -> None:
+        self.graph_view.select_node(self._current_workspace_node_id())
+
+    def _select_graph_node(self, node_id: str) -> None:
+        for item in self.file_tree.findItems(
+            "", Qt.MatchFlag.MatchContains | Qt.MatchFlag.MatchRecursive
+        ):
+            if item.data(0, Qt.ItemDataRole.UserRole) == node_id:
+                self.file_tree.setCurrentItem(item)
+                break
+
+    def _tree_selection_changed(
+        self, item: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ) -> None:
+        if item is not None and not item.data(0, Qt.ItemDataRole.UserRole + 1):
+            self.graph_view.select_node(item.data(0, Qt.ItemDataRole.UserRole))
+
+    def _open_graph_node(self, node_id: str) -> None:
+        if self.workspace_session is None:
+            return
+        previous = self._current_workspace_node_id()
+        try:
+            opened = self.open_document_at(self.workspace_session.root.path / node_id)
+            if opened is None:
+                self._restore_navigation_selection(previous)
+        except DocumentReadError as exc:
+            self._show_error("Could not open document", str(exc))
+
+    def _restore_navigation_selection(self, node_id: str | None) -> None:
+        self.graph_view.select_node(node_id)
+        if node_id is None:
+            self.file_tree.clearSelection()
+            self.file_tree.setCurrentItem(None)  # type: ignore[call-overload]
+            return
+        self._select_graph_node(node_id)
+
     def _rebuild_workspace_index(self) -> None:
         if self.workspace_session is None:
             self._show_error("Workspace index", "Open a workspace first.")
             return
         try:
-            SQLiteWorkspaceIndex(self.workspace_session.root.path).rebuild()
-        except (OSError, ValueError) as exc:
+            self.workspace_session.reconcile()
+            entries = discover_markdown(self.workspace_session.root.path)
+        except (OSError, ValueError, sqlite3.Error) as exc:
             self._show_error("Workspace index", str(exc))
             return
-        QMessageBox.information(self, "Workspace index", "Index rebuilt.")
+        self._populate_tree(entries)
+        self._refresh_graph()
+        note_count = sum(1 for _item in self._workspace_paths(entries))
+        QMessageBox.information(
+            self,
+            "Workspace index",
+            f"Workspace index rebuilt. {note_count} Markdown files indexed.",
+        )
+
+    def _workspace_paths(self, entries: tuple[WorkspaceEntry, ...]) -> Iterator[Path]:
+        for entry in entries:
+            if entry.is_directory:
+                yield from self._workspace_paths(entry.children)
+            else:
+                yield entry.relative_path
 
     def _save_action(self) -> bool:
         if self.document_session is None:
@@ -397,10 +576,7 @@ class MainWindow(QMainWindow):
                 if self.workspace_session is not None
                 else ""
             )
-            title = (
-                f"{workspace}{session.document.path.name}{marker} "
-                "- PDF2MD_OnDemand"
-            )
+            title = f"{workspace}{session.document.path.name}{marker} - PDF2MD_OnDemand"
         self.setWindowTitle(title)
 
     def _show_error(self, title: str, message: str) -> None:
@@ -416,6 +592,67 @@ class MainWindow(QMainWindow):
         )
         if answer == QMessageBox.StandardButton.Yes:
             QDesktopServices.openUrl(QUrl(url))
+
+    def _open_preview_internal_link(self, target: str, kind: str) -> None:
+        if self.document_session is None or self.document_session.document.path is None:
+            self._show_error(
+                "Internal link", "Save the current note before following links."
+            )
+            return
+        source_path = self.document_session.document.path.resolve()
+        destination: Path | None = None
+        if self.workspace_session is not None:
+            root = self.workspace_session.root.path.resolve()
+            try:
+                source_relative = source_path.relative_to(root)
+            except ValueError:
+                source_relative = None
+            if source_relative is not None:
+                try:
+                    reference = self.workspace_session.resolve_link(
+                        source_relative, target, kind
+                    )
+                    if (
+                        reference.status == "resolved"
+                        and reference.target_path is not None
+                    ):
+                        candidate = (root / reference.target_path).resolve()
+                        if (
+                            candidate.is_relative_to(root)
+                            and candidate.suffix.casefold() == ".md"
+                        ):
+                            destination = candidate
+                    elif reference.status == "ambiguous":
+                        self._show_error(
+                            "Internal link", f"Link target is ambiguous: {target}"
+                        )
+                        return
+                except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+                    self._show_error("Internal link", str(exc))
+                    return
+            else:
+                try:
+                    destination = resolve_standalone_markdown_link(
+                        source_path, target, kind
+                    )
+                except (OSError, ValueError) as exc:
+                    self._show_error("Internal link", str(exc))
+                    return
+        else:
+            try:
+                destination = resolve_standalone_markdown_link(
+                    source_path, target, kind
+                )
+            except (OSError, ValueError) as exc:
+                self._show_error("Internal link", str(exc))
+                return
+        if destination is None:
+            self._show_error("Internal link", f"Markdown target not found: {target}")
+            return
+        try:
+            self.open_document_at(destination)
+        except DocumentReadError as exc:
+            self._show_error("Could not open linked note", str(exc))
 
     def _schedule_preview(self, markdown: str) -> None:
         self._pending_markdown = markdown

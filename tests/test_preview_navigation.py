@@ -32,37 +32,71 @@ def test_preview_page_emits_http_links_but_rejects_navigation() -> None:
 
     assert not allowed
     page.externalLinkRequested.emit.assert_called_once_with(link.toString())
-    assert PreviewPage.acceptNavigationRequest(
-        page,
-        QUrl("javascript:alert(1)"),
-        QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-        True,
-    ) is False
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page,
+            QUrl("javascript:alert(1)"),
+            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+            True,
+        )
+        is False
+    )
     page.externalLinkRequested.emit.assert_called_once_with(link.toString())
+
+
+def test_preview_page_routes_only_clicked_internal_note_links() -> None:
+    page = type(
+        "PageHarness",
+        (),
+        {
+            "externalLinkRequested": Mock(),
+            "internalLinkRequested": Mock(),
+        },
+    )()
+    clicked = QWebEnginePage.NavigationType.NavigationTypeLinkClicked
+    link = QUrl("pdf2md-note://open?kind=wikilink&target=notes%2Fone%23heading")
+
+    assert not PreviewPage.acceptNavigationRequest(page, link, clicked, True)
+    page.internalLinkRequested.emit.assert_called_once_with(
+        "notes/one#heading", "wikilink"
+    )
+    assert not PreviewPage.acceptNavigationRequest(
+        page, link, QWebEnginePage.NavigationType.NavigationTypeOther, True
+    )
+    page.internalLinkRequested.emit.assert_called_once()
 
 
 def test_preview_page_never_opens_redirects_or_subframe_external_urls() -> None:
     page = type("PageHarness", (), {"externalLinkRequested": Mock()})()
     redirect = QUrl("https://example.test/redirect")
 
-    assert PreviewPage.acceptNavigationRequest(
-        page,
-        redirect,
-        QWebEnginePage.NavigationType.NavigationTypeOther,
-        True,
-    ) is False
-    assert PreviewPage.acceptNavigationRequest(
-        page,
-        redirect,
-        QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-        False,
-    ) is False
-    assert PreviewPage.acceptNavigationRequest(
-        page,
-        QUrl("pdf2md-asset://session/image.png"),
-        QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-        True,
-    ) is False
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page,
+            redirect,
+            QWebEnginePage.NavigationType.NavigationTypeOther,
+            True,
+        )
+        is False
+    )
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page,
+            redirect,
+            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+            False,
+        )
+        is False
+    )
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page,
+            QUrl("pdf2md-asset://session/image.png"),
+            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+            True,
+        )
+        is False
+    )
     page.externalLinkRequested.emit.assert_not_called()
 
 
@@ -70,18 +104,30 @@ def test_internal_pages_are_limited_to_preview_shell_and_asset_subresources() ->
     page = type("PageHarness", (), {"externalLinkRequested": Mock()})()
     other_navigation = QWebEnginePage.NavigationType.NavigationTypeOther
 
-    assert PreviewPage.acceptNavigationRequest(
-        page, QUrl(TRUSTED_PREVIEW_URL), other_navigation, True
-    ) is True
-    assert PreviewPage.acceptNavigationRequest(
-        page, QUrl("qrc:///other.html"), other_navigation, True
-    ) is False
-    assert PreviewPage.acceptNavigationRequest(
-        page, QUrl("pdf2md-asset://session/image.png"), other_navigation, False
-    ) is True
-    assert PreviewPage.acceptNavigationRequest(
-        page, QUrl("pdf2md-asset://session/image.png"), other_navigation, True
-    ) is False
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page, QUrl(TRUSTED_PREVIEW_URL), other_navigation, True
+        )
+        is True
+    )
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page, QUrl("qrc:///other.html"), other_navigation, True
+        )
+        is False
+    )
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page, QUrl("pdf2md-asset://session/image.png"), other_navigation, False
+        )
+        is True
+    )
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page, QUrl("pdf2md-asset://session/image.png"), other_navigation, True
+        )
+        is False
+    )
 
 
 def test_data_url_is_allowed_only_for_one_trusted_set_html_bootstrap() -> None:
@@ -96,9 +142,12 @@ def test_data_url_is_allowed_only_for_one_trusted_set_html_bootstrap() -> None:
     assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is True
     assert page._trusted_bootstrap_pending is False
     assert PreviewPage.acceptNavigationRequest(page, bootstrap, typed, True) is False
-    assert PreviewPage.acceptNavigationRequest(
-        page,
-        bootstrap,
-        QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
-        True,
-    ) is False
+    assert (
+        PreviewPage.acceptNavigationRequest(
+            page,
+            bootstrap,
+            QWebEnginePage.NavigationType.NavigationTypeLinkClicked,
+            True,
+        )
+        is False
+    )

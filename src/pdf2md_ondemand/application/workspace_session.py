@@ -3,11 +3,13 @@
 import os
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib.parse import unquote
 
 if TYPE_CHECKING:
+    from pdf2md_ondemand.domain.graph import KnowledgeGraph
     from pdf2md_ondemand.ports.workspace_index import WorkspaceIndex
 
 
@@ -163,7 +165,7 @@ def resolve_workspace_references(
             target_text, separator, fragment = raw_target.partition("#")
             if reference.kind == "wikilink" and not target_text:
                 target_text = note.relative_path.as_posix()
-            candidate_path = Path(target_text)
+            candidate_path = Path(unquote(target_text))
             if reference.kind == "wikilink" and candidate_path.suffix == "":
                 exact = by_path.get((candidate_path.as_posix() + ".md").casefold())
                 candidates = (
@@ -193,7 +195,7 @@ def resolve_workspace_references(
             if separator:
                 anchors = {heading.anchor for heading in target.metadata.headings}
                 anchor_status = (
-                    "resolved" if fragment.casefold() in anchors else "broken"
+                    "resolved" if unquote(fragment).casefold() in anchors else "broken"
                 )
             resolved.append(
                 ResolvedReference(
@@ -215,6 +217,77 @@ def resolve_workspace_references(
         )
     )
     return WorkspaceSnapshot(snapshot.notes, tuple(resolved), backlinks)
+
+
+def resolve_markdown_link(
+    snapshot: WorkspaceSnapshot,
+    source_path: Path,
+    target: str,
+    kind: str,
+) -> ResolvedReference:
+    """Resolve one Preview link through the workspace's existing resolver."""
+    if kind not in {"wikilink", "markdown"}:
+        raise ValueError(f"Unsupported internal link kind: {kind}")
+    source_path = Path(source_path)
+    reference = MarkdownReference(kind, target, None, 0, len(target))
+    source_note = next(
+        (note for note in snapshot.notes if note.relative_path == source_path), None
+    )
+    if source_note is None:
+        source_note = NoteSnapshot(
+            source_path,
+            "",
+            MarkdownMetadata(source_path.stem, (), (), (reference,)),
+        )
+        notes = (*snapshot.notes, source_note)
+    else:
+        source_note = replace(
+            source_note,
+            metadata=replace(
+                source_note.metadata,
+                references=(*source_note.metadata.references, reference),
+            ),
+        )
+        notes = tuple(
+            source_note if note.relative_path == source_path else note
+            for note in snapshot.notes
+        )
+    resolved = resolve_workspace_references(WorkspaceSnapshot(notes, (), ()))
+    result = next(item for item in resolved.references if item.reference is reference)
+    return result
+
+
+def resolve_standalone_markdown_link(
+    source_path: Path, target: str, kind: str
+) -> Path | None:
+    """Resolve an internal link near a standalone document without an index."""
+    source_path = Path(source_path).resolve()
+    root = source_path.parent
+    relative_source = source_path.relative_to(root)
+    snapshot = resolve_workspace_references(build_workspace_snapshot(root))
+    result = resolve_markdown_link(snapshot, relative_source, target, kind)
+    if result.status != "resolved" or result.target_path is None:
+        return None
+    candidate = (root / result.target_path).resolve()
+    if not candidate.is_relative_to(root) or candidate.suffix.casefold() != ".md":
+        return None
+    return candidate
+
+
+def create_markdown_file(root: Path, filename: str) -> Path:
+    """Create one empty Markdown note directly under a workspace root."""
+    name = filename.strip()
+    if not name or Path(name).name != name or name in {".", ".."}:
+        raise ValueError("Enter a Markdown filename without directory components")
+    if Path(name).suffix.casefold() != ".md":
+        name += ".md"
+    root_path = Path(root).resolve()
+    candidate = (root_path / name).resolve()
+    if not candidate.is_relative_to(root_path):
+        raise ValueError("New notes must remain inside the workspace")
+    with candidate.open("x", encoding="utf-8", newline=""):
+        pass
+    return candidate
 
 
 def _walk_entries(
@@ -394,14 +467,18 @@ class WorkspaceSession:
     root: WorkspaceRoot
     is_open: bool = True
     _pending_paths: set[Path] | None = None
+    _index: "WorkspaceIndex | None" = None
 
     @classmethod
-    def open(cls, root: Path) -> "WorkspaceSession":
-        return cls(WorkspaceRoot(root))
+    def open(
+        cls, root: Path, index: "WorkspaceIndex | None" = None
+    ) -> "WorkspaceSession":
+        return cls(WorkspaceRoot(root), _index=index)
 
     def close(self) -> None:
         self.is_open = False
         self._pending_paths = None
+        self._index = None
 
     def queue_changes(self, paths: Iterable[Path]) -> tuple[Path, ...]:
         """Coalesce watcher events; the caller schedules processing after debounce."""
@@ -419,6 +496,34 @@ class WorkspaceSession:
         self._pending_paths.clear()
         return pending
 
-    def reconcile(self, index: "WorkspaceIndex") -> WorkspaceSnapshot:
+    def reconcile(self, index: "WorkspaceIndex | None" = None) -> WorkspaceSnapshot:
         """Run a full scan through a workspace index after event loss or on demand."""
-        return index.rebuild()
+        return self._require_index(index).rebuild()
+
+    def knowledge_graph(
+        self, index: "WorkspaceIndex | None" = None
+    ) -> "KnowledgeGraph":
+        """Project the currently published index snapshot into a graph DTO."""
+        from pdf2md_ondemand.application.build_graph import build_knowledge_graph
+
+        if not self.is_open:
+            raise RuntimeError("Workspace is closed")
+        return build_knowledge_graph(self._require_index(index).load())
+
+    def resolve_link(
+        self, source_path: Path, target: str, kind: str
+    ) -> ResolvedReference:
+        """Resolve a Preview link using metadata from the published index."""
+        if not self.is_open:
+            raise RuntimeError("Workspace is closed")
+        return resolve_markdown_link(
+            self._require_index(None).load(), source_path, target, kind
+        )
+
+    def _require_index(self, index: "WorkspaceIndex | None") -> "WorkspaceIndex":
+        if not self.is_open:
+            raise RuntimeError("Workspace is closed")
+        resolved = index or self._index
+        if resolved is None:
+            raise RuntimeError("Workspace index is not configured")
+        return resolved
