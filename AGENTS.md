@@ -437,3 +437,113 @@ Failure to create `.git/index.lock` is NOT a stop condition.
 
 Only stop for the architectural or technical stop conditions defined elsewhere
 in this AGENTS.md, or when the requested phase is complete.
+
+
+---
+
+## AUTONOMOUS CONTINUATION ON ENVIRONMENTAL TEST FAILURES
+
+Autonomous execution must continue across phase deliverables whenever possible.
+
+A deliverable must NOT block the entire phase solely because a test cannot run
+due to an environmental, sandbox, filesystem, permission, temporary-directory,
+GUI-host, symlink, or platform limitation.
+
+### Distinguish failure classes
+
+Classify every validation failure as one of:
+
+1. PRODUCT FAILURE
+   - assertion failure;
+   - incorrect behavior;
+   - exception caused by application code;
+   - regression;
+   - type error;
+   - lint failure caused by changed code.
+
+2. TEST FAILURE
+   - broken or incorrect test;
+   - test expectation inconsistent with intended behavior.
+
+3. ENVIRONMENT FAILURE
+   - permission denied;
+   - inability to create/delete temporary directories;
+   - sandbox restriction;
+   - unavailable symlink privileges;
+   - unavailable display/GUI host;
+   - Chromium/QWebEngine host limitation;
+   - unavailable external service;
+   - platform-specific runner limitation.
+
+Only PRODUCT FAILURE and unresolved TEST FAILURE are blocking by default.
+
+ENVIRONMENT FAILURE is NOT a stop condition by itself.
+
+### Environmental validation fallback
+
+When a required test cannot run because of an environment failure:
+
+1. Confirm that the failure is environmental and not caused by changed code.
+2. Record the exact unavailable validation in the phase plan/context.
+3. Run the strongest available alternative validation, such as:
+   - focused unit tests that do not require the failing facility;
+   - direct invocation of pure domain/application functions;
+   - static checks;
+   - Ruff;
+   - mypy;
+   - deterministic inspection;
+   - existing regression tests;
+   - headless/offscreen tests when available.
+4. Mark the affected validation as:
+   DEFERRED_ENVIRONMENT_VALIDATION
+5. Continue to the next phase deliverable.
+
+Do NOT repeatedly retry the same environmental failure.
+
+Do NOT stop the phase merely because a particular test runner feature is unavailable.
+
+### Phase completion with deferred validation
+
+A phase may continue and reach implementation-complete status with deferred
+environment validations, provided:
+
+- no known product failure remains;
+- no relevant static check fails;
+- available deterministic tests pass;
+- each deferred validation is explicitly documented.
+
+At the end of the phase, report all DEFERRED_ENVIRONMENT_VALIDATION items
+for manual execution by the human user outside the Codex sandbox.
+
+### Progression rule
+
+After each deliverable:
+
+IF product validation passes:
+    continue.
+
+IF validation is unavailable only because of environment limitations:
+    document it,
+    perform alternative validation,
+    continue.
+
+IF a real product failure remains after focused correction attempts:
+    stop.
+
+Do not stop merely because a deliverable could not obtain one preferred form
+of validation.
+
+## PLAN UPDATE RULE
+
+Always update the phase plan and context after each attempted deliverable.
+
+If validation is incomplete because of an environment limitation, record:
+
+- implementation status;
+- validations that passed;
+- validation that was unavailable;
+- reason;
+- residual risk;
+- intended checkpoint message.
+
+Do not leave the plan stale merely because one validation is deferred.
