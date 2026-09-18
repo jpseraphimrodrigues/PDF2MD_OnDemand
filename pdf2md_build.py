@@ -27,8 +27,18 @@ class BuildPy(_build_py):
         )
         package_frontend.mkdir(parents=True, exist_ok=True)
         for source in (FRONTEND / "src").glob("*.html"):
-            shutil.copy2(source, package_frontend / source.name)
-        for name in ("editor.js", "preview.js", "preview.css", "mermaid.js"):
+            html = source.read_text(encoding="utf-8")
+            if source.name == "editor.html":
+                html = html.replace("../dist/editor.js", "editor.js")
+                html = html.replace("../dist/editor.css", "editor.css")
+            (package_frontend / source.name).write_text(html, encoding="utf-8")
+        for name in (
+            "editor.js",
+            "editor.css",
+            "preview.js",
+            "preview.css",
+            "mermaid.js",
+        ):
             shutil.copy2(FRONTEND / "dist" / name, package_frontend / name)
         shutil.copytree(
             FRONTEND / "dist" / "licenses",

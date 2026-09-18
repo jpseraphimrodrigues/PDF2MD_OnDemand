@@ -1,4 +1,5 @@
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
 const test = require("node:test");
 const {buildCommandTransaction} = require("../src/editor_commands.js");
 
@@ -41,4 +42,15 @@ test("heading prefixes the current line and link uses editable placeholders", ()
 
 test("unknown toolbar command produces no transaction", () => {
   assert.equal(buildCommandTransaction("text", 0, 4, "unknown"), null);
+});
+
+test("editor API preserves independent CodeMirror states when switching tabs", () => {
+  const source = fs.readFileSync("src/editor.js", "utf8");
+  assert.match(source, /documentStates\.set\(activeDocumentKey,\s*\{\s*state: view\.state/);
+  assert.match(source, /state: EditorState\.create\(\{doc: text, extensions\}\)/);
+  assert.match(source, /view\.setState\(next\.state\)/);
+  assert.match(source, /view\.scrollDOM\.scrollTop = next\.scrollTop/);
+  assert.match(source, /view\.scrollDOM\.scrollLeft = next\.scrollLeft/);
+  assert.match(source, /update\.docChanged && bridge && !switchingDocument/);
+  assert.match(source, /documentStates\.delete\(key\)/);
 });

@@ -4,28 +4,44 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QEventLoop, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEventLoop, QObject, QSettings, Qt, QTimer, Signal
 from PySide6.QtWidgets import QApplication, QMessageBox, QSplitter, QWidget
 from pytest import MonkeyPatch
 
 from pdf2md_ondemand.adapters.qt_asset_scheme import register_asset_scheme
-from pdf2md_ondemand.application.document_session import DocumentSession
-from pdf2md_ondemand.domain.document import Document
 from pdf2md_ondemand.ui.desktop import main_window
 
 
 class _Bridge(QObject):
     contentChanged = Signal(str)
+    documentContentChanged = Signal(str, str)
     commandRequested = Signal(str)
+    documentSwitchRequested = Signal(str, str)
+    documentCloseRequested = Signal(str)
 
     def __init__(self, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._content = ""
+        self._key = ""
 
     def setContent(self, content: str) -> None:
         if content != self._content:
             self._content = content
             self.contentChanged.emit(content)
+            if self._key:
+                self.documentContentChanged.emit(self._key, content)
+
+    def switchDocument(self, key: str, content: str) -> None:
+        self._key = key
+        self.setContent(content)
+
+    def closeDocumentState(self, key: str) -> None:
+        self.documentCloseRequested.emit(key)
+
+    def getDocumentKey(self, callback=None):
+        if callback:
+            callback(self._key)
+        return self._key
 
     def getContent(self) -> str:
         return self._content
@@ -117,13 +133,13 @@ def test_workspace_tree_opens_note_and_preserves_cancelled_dirty_document(
             lambda *_args: QMessageBox.StandardButton.Cancel,
         )
         window._open_graph_node("note.md")
-        assert window.document_session is session
-        assert window.editor_view.bridge.getContent() == "dirty"
-        assert window.graph_view._current_node == "original.md"
+        assert window.document_session is not session
+        assert window.editor_view.bridge.getContent() == "workspace note"
+        assert window.graph_view._current_node == "note.md"
         item = window.file_tree.topLevelItem(0)
         window._open_tree_item(item, 0)
-        assert window.document_session is session
-        assert window.editor_view.bridge.getContent() == "dirty"
+        assert window.document_session is not session
+        assert window.editor_view.bridge.getContent() == "workspace note"
         monkeypatch.setattr(
             main_window.QMessageBox,
             "warning",
@@ -149,8 +165,8 @@ def test_main_window_splits_panes_and_debounces_latest_editor_content(
     assert window.splitter.count() == 2
     assert window.splitter.orientation() == Qt.Orientation.Horizontal
 
-    window.editor_view.bridge.contentChanged.emit("primeiro")
-    window.editor_view.bridge.contentChanged.emit("último Ω")
+    window._schedule_preview("primeiro")
+    window._schedule_preview("último Ω")
     assert window.preview_view.rendered == []
 
     loop = QEventLoop()
@@ -458,8 +474,7 @@ def test_open_dialog_and_save_button_route_pathless_session_to_save_as(
     assert window.document_session.document.path == source
     assert window.editor_view.bridge.getContent() == "opened"
 
-    pathless = DocumentSession.opened(Document(None, "untitled"), None)
-    window.document_session = pathless
+    pathless = window.new_document_tab()
     window.editor_view.bridge.setContent("new content")
     destination = tmp_path / "new.md"
     monkeypatch.setattr(
@@ -527,10 +542,12 @@ def test_cancel_open_and_close_preserves_dirty_document(
         lambda *_args: main_window.QMessageBox.StandardButton.Cancel,
     )
 
-    assert window.open_document_at(target) is None
-    assert window.document_session is session
+    target_session = window.open_document_at(target)
+    assert target_session is not None
+    assert window.document_session is target_session
+    assert window.editor_view.bridge.getContent() == "target"
+    window._activate_document_tab(window.document_tabs.key_for_session(session))
     assert window.editor_view.bridge.getContent() == "unsaved edit"
-    assert window.windowTitle() == "original.md* - PDF2MD_OnDemand"
 
     window.show()
     assert not window.close()
@@ -571,3 +588,125 @@ def test_close_save_failure_cancels_close_and_keeps_external_content(
     assert errors and "changed outside" in errors[0]
     window.hide()
     app.processEvents()
+
+
+def test_layout_round_trips_with_isolated_qsettings(
+    tmp_path: Path, monkeypatch
+) -> None:
+    register_asset_scheme()
+    app = QApplication.instance() or QApplication([])
+    monkeypatch.setattr(main_window, "EditorView", _Editor)
+    monkeypatch.setattr(main_window, "PreviewView", _Preview)
+    settings_path = tmp_path / "ui.ini"
+    settings = QSettings(str(settings_path), QSettings.Format.IniFormat)
+    first = main_window.MainWindow(settings)
+    first.show()
+    app.processEvents()
+    first.resize(1111, 777)
+    first.splitter.setSizes([700, 411])
+    first.show_preview_action.setChecked(False)
+    first._save_layout()
+    first._save_layout()
+    first.close()
+    app.processEvents()
+
+    restored = main_window.MainWindow(
+        QSettings(str(settings_path), QSettings.Format.IniFormat)
+    )
+    assert restored._settings.value("window/size").width() == 1111
+    assert restored._settings.value("window/size").height() == 777
+    assert not restored.show_preview_action.isChecked()
+    restored.close()
+    app.processEvents()
+
+
+def test_opening_documents_creates_tabs_and_reuses_resolved_path(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    app, window = _make_window(monkeypatch)
+    first = tmp_path / "first.md"
+    second = tmp_path / "second.md"
+    first.write_text("first", encoding="utf-8")
+    second.write_text("second", encoding="utf-8")
+    monkeypatch.setattr(
+        main_window.QMessageBox,
+        "warning",
+        lambda *_args: QMessageBox.StandardButton.Discard,
+    )
+    try:
+        first_session = window.open_document_at(first)
+        first_key = window._active_tab_key
+        assert first_key is not None
+        second_session = window.open_document_at(second)
+        assert second_session is not first_session
+        assert window.tab_bar.count() == 2
+        assert window.editor_view.bridge.getContent() == "second"
+        window.editor_view.bridge.documentContentChanged.emit(first_key, "late edit")
+        assert first_session.dirty
+        assert first_session.document.content == "late edit"
+        assert window.editor_view.bridge.getContent() == "second"
+        assert window.open_document_at(first.resolve()) is first_session
+        assert window._active_tab_key == first_key
+        assert window.tab_bar.count() == 2
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_workspace_close_removes_owned_tabs_and_preserves_external_tabs(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    app, window = _make_window(monkeypatch)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    inside = workspace / "inside.md"
+    outside = tmp_path / "outside.md"
+    inside.write_text("inside", encoding="utf-8")
+    outside.write_text("outside", encoding="utf-8")
+    try:
+        window.open_workspace_at(workspace)
+        inside_session = window.open_document_at(inside)
+        outside_session = window.open_document_at(outside)
+        assert window.close_workspace()
+        assert window.workspace_session is None
+        assert inside_session not in [
+            tab.session for tab in window.document_tabs._tabs.values()
+        ]
+        assert outside_session in [
+            tab.session for tab in window.document_tabs._tabs.values()
+        ]
+        assert window.document_session is outside_session
+    finally:
+        window.close()
+        app.processEvents()
+
+
+def test_cancelled_workspace_close_keeps_tabs_and_workspace(
+    tmp_path: Path, monkeypatch: MonkeyPatch
+) -> None:
+    app, window = _make_window(monkeypatch)
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    inside = workspace / "inside.md"
+    inside.write_text("inside", encoding="utf-8")
+    try:
+        window.open_workspace_at(workspace)
+        session = window.open_document_at(inside)
+        window.editor_view.bridge.setContent("dirty")
+        monkeypatch.setattr(
+            main_window.QMessageBox,
+            "warning",
+            lambda *_args: QMessageBox.StandardButton.Cancel,
+        )
+        assert not window.close_workspace()
+        assert window.workspace_session is not None
+        assert session in [tab.session for tab in window.document_tabs._tabs.values()]
+        assert session.dirty
+    finally:
+        monkeypatch.setattr(
+            main_window.QMessageBox,
+            "warning",
+            lambda *_args: QMessageBox.StandardButton.Discard,
+        )
+        window.close()
+        app.processEvents()

@@ -6,15 +6,19 @@ import sqlite3
 from collections.abc import Iterator
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, QUrl
+from PySide6.QtCore import QSettings, QSignalBlocker, Qt, QTimer, QUrl
 from PySide6.QtGui import QAction, QCloseEvent, QDesktopServices, QKeySequence
 from PySide6.QtWidgets import (
     QDockWidget,
     QFileDialog,
     QInputDialog,
+    QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QSplitter,
+    QTabBar,
     QToolBar,
     QTreeWidget,
     QTreeWidgetItem,
@@ -44,10 +48,11 @@ from pdf2md_ondemand.application.workspace_session import (
     WorkspaceSession,
     create_markdown_file,
     discover_markdown,
-    open_workspace_search_result,
     resolve_standalone_markdown_link,
     search_workspace,
 )
+from pdf2md_ondemand.domain.document import Document
+from pdf2md_ondemand.ui.desktop.document_tabs import DocumentTabs
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
 from pdf2md_ondemand.ui.desktop.graph_view import GraphView
 from pdf2md_ondemand.ui.desktop.preview_view import PreviewView
@@ -56,14 +61,24 @@ PREVIEW_DEBOUNCE_MS = 200
 
 
 class MainWindow(QMainWindow):
-    """Resizable side-by-side Editor and Preview, without document lifecycle."""
+    """Tabbed Markdown workspace with a shared Editor/Preview work surface."""
 
-    def __init__(self) -> None:
+    def __init__(self, settings: QSettings | None = None) -> None:
         super().__init__()
+        self._settings = settings or QSettings()
+        self._preferred_workspace_visible = self._settings.value(
+            "panels/workspaceVisible", True, type=bool
+        )
+        self._preferred_graph_visible = self._settings.value(
+            "panels/graphVisible", True, type=bool
+        )
+        self._suppress_layout_update = True
         self.setWindowTitle("PDF2MD_OnDemand")
         self.resize(960, 640)
         self.document_store = FilesystemDocumentStore()
         self.document_session: DocumentSession | None = None
+        self.document_tabs = DocumentTabs()
+        self._active_tab_key: str | None = None
         self.workspace_session: WorkspaceSession | None = None
         self.editor_view = EditorView()
         self.asset_sessions = AssetSessionRegistry()
@@ -81,15 +96,29 @@ class MainWindow(QMainWindow):
         self.file_tree.setHeaderHidden(True)
         self.file_tree.itemDoubleClicked.connect(self._open_tree_item)
         self.file_tree.currentItemChanged.connect(self._tree_selection_changed)
+        self.workspace_search = QLineEdit()
+        self.workspace_search.setPlaceholderText("Search workspace")
+        self.workspace_search.setClearButtonEnabled(True)
+        self.workspace_search.returnPressed.connect(self._run_workspace_search)
+        self.workspace_search_results = QListWidget()
+        self.workspace_search_results.itemDoubleClicked.connect(
+            self._open_search_result
+        )
         self.workspace_sidebar = QWidget()
         sidebar_layout = QVBoxLayout(self.workspace_sidebar)
-        sidebar_layout.setContentsMargins(0, 0, 0, 0)
+        sidebar_layout.setContentsMargins(10, 10, 10, 10)
+        sidebar_layout.setSpacing(8)
         sidebar_layout.addWidget(self.file_tree)
+        sidebar_layout.addWidget(self.workspace_search)
+        sidebar_layout.addWidget(self.workspace_search_results)
         self._workspace_dock = QDockWidget("Workspace", self)
         self._workspace_dock.setWidget(self.workspace_sidebar)
         self._workspace_dock.setObjectName("workspaceDock")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._workspace_dock)
         self._workspace_dock.hide()
+        self._workspace_dock.visibilityChanged.connect(
+            self._workspace_visibility_changed
+        )
         self.graph_view = GraphView(self)
         self.graph_view.nodeActivated.connect(self._open_graph_node)
         self.graph_view.nodeSelected.connect(self._select_graph_node)
@@ -98,37 +127,65 @@ class MainWindow(QMainWindow):
         self._graph_dock.setWidget(self.graph_view)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._graph_dock)
         self._graph_dock.hide()
-        self.setCentralWidget(self.splitter)
+        self._graph_dock.visibilityChanged.connect(self._graph_visibility_changed)
+        self.tab_bar = QTabBar(self)
+        self.tab_bar.setObjectName("documentTabs")
+        self.tab_bar.setDocumentMode(True)
+        self.tab_bar.setTabsClosable(True)
+        self.tab_bar.currentChanged.connect(self._tab_changed)
+        self.tab_bar.tabCloseRequested.connect(self._close_tab_at)
+        self.tab_bar.tabMoved.connect(self._tab_moved)
+        self.splitter.setHandleWidth(5)
+        central = QWidget(self)
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+        central_layout.setSpacing(0)
+        central_layout.addWidget(self.tab_bar)
+        central_layout.addWidget(self.splitter, 1)
+        self.setCentralWidget(central)
 
         self._pending_markdown = ""
         self._preview_timer = QTimer(self)
         self._preview_timer.setSingleShot(True)
         self._preview_timer.setInterval(PREVIEW_DEBOUNCE_MS)
         self._preview_timer.timeout.connect(self._render_pending_preview)
-        self.editor_view.bridge.contentChanged.connect(self._schedule_preview)
-        self.editor_view.bridge.contentChanged.connect(self._update_document_content)
+        self.editor_view.bridge.documentContentChanged.connect(
+            self._document_content_changed
+        )
         self._create_file_actions()
         self._create_format_toolbar()
+        self._restore_layout()
         self._update_window_title()
 
     def open_document_at(self, path: Path) -> DocumentSession | None:
-        """Switch to a Markdown file after resolving any dirty session."""
-        if not self._confirm_unsaved_changes():
-            return None
+        """Open a new tab, or activate the existing tab for the resolved path."""
+        existing = self.document_tabs.find_path(path)
+        if existing is not None:
+            self._activate_document_tab(existing.key)
+            return existing.session
         session = open_document(path, self.document_store)
-        self.document_session = session
-        self.editor_view.bridge.setContent(session.document.content)
-        self.preview_view.set_asset_root(path.parent)
-        self._schedule_preview(session.document.content)
-        self._update_window_title()
-        self._sync_graph_selection()
+        tab, _created = self.document_tabs.add(session)
+        self._insert_tab(tab.key)
+        self._activate_document_tab(tab.key)
+        return session
+
+    def new_document_tab(self) -> DocumentSession:
+        """Create a blank pathless document that can later be saved with Save As."""
+        session = DocumentSession.opened(Document(None, ""), None)
+        tab, _created = self.document_tabs.add(session)
+        self._insert_tab(tab.key)
+        self._activate_document_tab(tab.key)
         return session
 
     def save_current_to_disk(self) -> Path:
         """Save the current Editor text using the session's version token."""
         session = self._require_session()
+        previous_path = session.document.path
         session.edit(self.editor_view.bridge.getContent())
         path = save_document(session, self.document_store)
+        if self._active_tab_key is not None:
+            self.document_tabs.reindex_path(self._active_tab_key, previous_path)
+            self._update_tab_label(self._active_tab_key)
         self._update_window_title()
         self._refresh_graph_after_save(path)
         return path
@@ -136,11 +193,33 @@ class MainWindow(QMainWindow):
     def save_as_to(self, path: Path, *, overwrite: bool = False) -> Path:
         """Save the current Editor text to a chosen destination."""
         session = self._require_session()
+        key = self._active_tab_key
+        if key is None:
+            raise UnsavedDocumentError("Open a Markdown document first")
+        if self.document_tabs.destination_is_open(key, path):
+            raise DestinationExistsError(f"A tab for this path is already open: {path}")
+        previous_path = session.document.path
         session.edit(self.editor_view.bridge.getContent())
+        return self._save_session_as(session, key, previous_path, path, overwrite)
+
+    def _save_session_as(
+        self,
+        session: DocumentSession,
+        key: str | None,
+        previous_path: Path | None,
+        path: Path,
+        overwrite: bool,
+    ) -> Path:
+        if key is not None and self.document_tabs.destination_is_open(key, path):
+            raise DestinationExistsError(f"A tab for this path is already open: {path}")
         saved_path = save_document_as(
             session, path, self.document_store, overwrite=overwrite
         )
-        self.preview_view.set_asset_root(saved_path.parent)
+        if key is not None:
+            self.document_tabs.reindex_path(key, previous_path)
+            self._update_tab_label(key)
+        if key == self._active_tab_key:
+            self.preview_view.set_asset_root(saved_path.parent)
         self._update_window_title()
         self._refresh_graph_after_save(saved_path)
         return saved_path
@@ -150,17 +229,184 @@ class MainWindow(QMainWindow):
             raise UnsavedDocumentError("Open a Markdown document first")
         return self.document_session
 
-    def _update_document_content(self, markdown: str) -> None:
-        if self.document_session is not None:
-            self.document_session.edit(markdown)
+    def _document_content_changed(self, key: str, markdown: str) -> None:
+        if key not in self.document_tabs.keys:
+            return
+        session = self.document_tabs.get(key).session
+        session.edit(markdown)
+        self._update_tab_label(key)
+        if key == self._active_tab_key:
+            self._schedule_preview(markdown)
             self._update_window_title()
+
+    def _insert_tab(self, key: str) -> None:
+        self.document_tabs.get(key)
+        index = self.tab_bar.addTab("")
+        self.tab_bar.setTabData(index, key)
+        self._update_tab_label(key)
+
+    def _activate_document_tab(self, key: str) -> None:
+        index = self._tab_index(key)
+        if index < 0:
+            return
+        if self.tab_bar.currentIndex() == index:
+            self._tab_changed(index)
+        else:
+            self.tab_bar.setCurrentIndex(index)
+
+    def _tab_index(self, key: str | None) -> int:
+        if key is None:
+            return -1
+        return next(
+            (
+                index
+                for index in range(self.tab_bar.count())
+                if self.tab_bar.tabData(index) == key
+            ),
+            -1,
+        )
+
+    def _tab_changed(self, index: int) -> None:
+        if index < 0 or index >= self.tab_bar.count():
+            old_key = self._active_tab_key
+            self._active_tab_key = None
+            self.document_session = None
+            if old_key is not None:
+                self.editor_view.bridge.closeDocumentState(old_key)
+            self.preview_view.set_asset_root(None)
+            self._schedule_preview("")
+            self.graph_view.select_node(None)
+            self._update_window_title()
+            return
+        key = self.tab_bar.tabData(index)
+        if not isinstance(key, str):
+            return
+        tab = self.document_tabs.get(key)
+        self._active_tab_key = key
+        self.document_session = tab.session
+        self.editor_view.bridge.switchDocument(key, tab.session.document.content)
+        path = tab.session.document.path
+        self.preview_view.set_asset_root(path.parent if path is not None else None)
+        self._schedule_preview(tab.session.document.content)
+        self._sync_graph_selection()
+        self._update_window_title()
+
+    def _tab_moved(self, source: int, destination: int) -> None:
+        self.document_tabs.move(source, destination)
+
+    def _update_tab_label(self, key: str | None) -> None:
+        index = self._tab_index(key)
+        if index < 0 or key is None:
+            return
+        session = self.document_tabs.get(key).session
+        path = session.document.path
+        label = path.name if path is not None else "Untitled"
+        if session.dirty:
+            label += " •"
+        self.tab_bar.setTabText(index, label)
+        self.tab_bar.setTabToolTip(
+            index, str(path) if path is not None else "Unsaved note"
+        )
+
+    def _close_tab_at(self, index: int) -> None:
+        if index < 0 or index >= self.tab_bar.count():
+            return
+        key = self.tab_bar.tabData(index)
+        if isinstance(key, str):
+            self._close_tabs((key,))
+
+    def _close_tabs(self, keys: tuple[str, ...]) -> bool:
+        keys = tuple(key for key in keys if key in self.document_tabs.keys)
+        if not keys or not self._resolve_dirty_tabs(keys):
+            return not keys
+        self._remove_tabs_without_prompt(keys)
+        return True
+
+    def _remove_tabs_without_prompt(self, keys: tuple[str, ...]) -> None:
+        keys = tuple(key for key in keys if key in self.document_tabs.keys)
+        if not keys:
+            return
+        old_order = self.document_tabs.keys
+        old_active = self._active_tab_key
+        if old_active in keys:
+            old_index = old_order.index(old_active)
+        else:
+            old_index = -1
+        blocker = QSignalBlocker(self.tab_bar)
+        indices = sorted((self._tab_index(key) for key in keys), reverse=True)
+        for index in indices:
+            self.tab_bar.removeTab(index)
+        removed = self.document_tabs.remove_many(keys)
+        del blocker
+        remaining = self.document_tabs.keys
+        next_key = old_active if old_active in remaining else None
+        if next_key is None and remaining:
+            next_key = remaining[min(max(old_index, 0), len(remaining) - 1)]
+        for tab in removed:
+            self.editor_view.bridge.closeDocumentState(tab.key)
+        if next_key is None:
+            self._tab_changed(-1)
+        else:
+            self._activate_document_tab(next_key)
+
+    def _resolve_dirty_tabs(self, keys: tuple[str, ...]) -> bool:
+        decisions: list[tuple[DocumentSession, QMessageBox.StandardButton]] = []
+        for key in keys:
+            session = self.document_tabs.get(key).session
+            if not session.dirty:
+                continue
+            answer = QMessageBox.warning(
+                self,
+                "Unsaved changes",
+                (
+                    f"Save changes to {session.document.path or 'Untitled'} "
+                    "before closing?"
+                ),
+                QMessageBox.StandardButton.Save
+                | QMessageBox.StandardButton.Discard
+                | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Cancel,
+            )
+            if answer == QMessageBox.StandardButton.Cancel:
+                return False
+            decisions.append((session, answer))
+        for session, answer in decisions:
+            if answer == QMessageBox.StandardButton.Save and not self._save_session(
+                session
+            ):
+                return False
+        return True
+
+    def _save_session(self, session: DocumentSession) -> bool:
+        key = self.document_tabs.key_for_session(session)
+        if key == self._active_tab_key:
+            session.edit(self.editor_view.bridge.getContent())
+        if session.document.path is None:
+            return self._save_as_dialog(session)
+        try:
+            path = save_document(session, self.document_store)
+        except (
+            DocumentReadError,
+            DocumentWriteError,
+            ExternalModificationError,
+        ) as exc:
+            self._show_error("Could not save document", str(exc))
+            return False
+        self._update_tab_label(key)
+        self._update_window_title()
+        self._refresh_graph_after_save(path)
+        return True
 
     def _create_file_actions(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
+        self.new_tab_action = QAction("New Tab", self)
+        self.new_tab_action.setShortcut(QKeySequence.StandardKey.New)
+        self.new_tab_action.triggered.connect(self.new_document_tab)
+        file_menu.addAction(self.new_tab_action)
         self.new_note_action = QAction("New Markdown File…", self)
         self.new_note_action.triggered.connect(self._new_markdown_file)
         file_menu.addAction(self.new_note_action)
-        self.close_note_action = QAction("Close Note", self)
+        self.close_note_action = QAction("Close Tab", self)
         self.close_note_action.triggered.connect(self.close_note)
         file_menu.addAction(self.close_note_action)
         file_menu.addSeparator()
@@ -203,6 +449,8 @@ class MainWindow(QMainWindow):
         self.show_preview_action.setChecked(True)
         self.show_preview_action.toggled.connect(self.preview_view.setVisible)
         view_menu.addAction(self.show_preview_action)
+        view_menu.addAction(self._workspace_dock.toggleViewAction())
+        view_menu.addAction(self._graph_dock.toggleViewAction())
 
     def _create_format_toolbar(self) -> None:
         self.format_toolbar = QToolBar("Markdown", self)
@@ -247,15 +495,43 @@ class MainWindow(QMainWindow):
         except WorkspaceDiscoveryError as exc:
             self._show_error("Could not open workspace", str(exc))
             return None
-        if not self._confirm_unsaved_changes():
+        previous_workspace = self.workspace_session
+        previous_root = previous_workspace.root.path if previous_workspace else None
+        if previous_root is not None and previous_root.resolve() == root.resolve():
+            assert previous_workspace is not None
+            previous_workspace.reconcile()
+            self._populate_tree(entries)
+            self._refresh_graph()
+            return previous_workspace
+        closing_keys = (
+            self.document_tabs.within(previous_root)
+            if previous_root is not None
+            else ()
+        )
+        if closing_keys and not self._resolve_dirty_tabs(closing_keys):
             return None
-        session = WorkspaceSession.open(root, index=SQLiteWorkspaceIndex(Path(root)))
+        try:
+            session = WorkspaceSession.open(
+                root, index=SQLiteWorkspaceIndex(Path(root))
+            )
+        except (OSError, ValueError, RuntimeError, sqlite3.Error) as exc:
+            self._show_error("Could not open workspace", str(exc))
+            return None
+        if previous_workspace is not None:
+            previous_workspace.close()
+        closing_keys = (
+            self.document_tabs.within(previous_root)
+            if previous_root is not None
+            else ()
+        )
+        if closing_keys:
+            self._remove_tabs_without_prompt(closing_keys)
         self.workspace_session = session
         self._populate_tree(entries)
         self.graph_view.clear_graph()
-        self._workspace_dock.show()
-        self._graph_dock.show()
-        self.show_graph_action.setChecked(True)
+        self._workspace_dock.setVisible(bool(self._preferred_workspace_visible))
+        self._graph_dock.setVisible(bool(self._preferred_graph_visible))
+        self.show_graph_action.setChecked(bool(self._preferred_graph_visible))
         self._refresh_graph(rebuild=True)
         self.setWindowTitle(f"{session.root.path.name} - PDF2MD_OnDemand")
         return session
@@ -284,16 +560,25 @@ class MainWindow(QMainWindow):
             self.open_workspace_at(Path(folder))
 
     def close_workspace(self) -> bool:
-        """Leave workspace context while retaining the currently open document."""
-        if self.workspace_session is None or not self._confirm_unsaved_changes():
+        """Close workspace-owned tabs and context after resolving dirty sessions."""
+        if self.workspace_session is None:
             return False
+        closing_keys = self.document_tabs.within(self.workspace_session.root.path)
+        if closing_keys and not self._resolve_dirty_tabs(closing_keys):
+            return False
+        closing_keys = self.document_tabs.within(self.workspace_session.root.path)
+        self._remove_tabs_without_prompt(closing_keys)
         self.workspace_session.close()
         self.workspace_session = None
         self.file_tree.clear()
+        self._suppress_layout_update = True
         self._workspace_dock.hide()
         self._graph_dock.hide()
+        self._suppress_layout_update = False
         self.graph_view.clear_graph()
         self.show_graph_action.setChecked(False)
+        self.workspace_search.clear()
+        self.workspace_search_results.clear()
         self._update_window_title()
         return True
 
@@ -304,7 +589,7 @@ class MainWindow(QMainWindow):
         filename, accepted = QInputDialog.getText(
             self, "New Markdown File", "Filename:"
         )
-        if not accepted or not filename.strip() or not self._confirm_unsaved_changes():
+        if not accepted or not filename.strip():
             return
         try:
             path = create_markdown_file(self.workspace_session.root.path, filename)
@@ -316,29 +601,19 @@ class MainWindow(QMainWindow):
             self._show_error("Could not create Markdown file", str(exc))
 
     def close_note(self) -> bool:
-        """Close the active document while preserving any open workspace."""
-        if self.document_session is None or not self._confirm_unsaved_changes():
+        """Close the active tab after resolving its unsaved content."""
+        if self._active_tab_key is None:
             return False
-        self.document_session = None
-        self.preview_view.set_asset_root(None)
-        self.editor_view.bridge.setContent("")
-        self._schedule_preview("")
-        self.graph_view.select_node(None)
-        self.file_tree.clearSelection()
-        self._update_window_title()
-        return True
+        return self._close_tabs((self._active_tab_key,))
 
     def _open_tree_item(self, item: QTreeWidgetItem, _column: int) -> None:
         if self.workspace_session is None or item.data(0, Qt.ItemDataRole.UserRole + 1):
             return
-        previous = self._current_workspace_node_id()
         try:
-            opened = self.open_document_at(
+            self.open_document_at(
                 self.workspace_session.root.path
                 / item.data(0, Qt.ItemDataRole.UserRole)
             )
-            if opened is None:
-                self._restore_navigation_selection(previous)
         except DocumentReadError as exc:
             self._show_error("Could not open document", str(exc))
 
@@ -346,8 +621,15 @@ class MainWindow(QMainWindow):
         if self.workspace_session is None:
             self._show_error("Workspace search", "Open a workspace first.")
             return
-        query, accepted = QInputDialog.getText(self, "Search Workspace", "Text:")
-        if not accepted or not query:
+        self._workspace_dock.show()
+        self.workspace_search.setFocus()
+
+    def _run_workspace_search(self) -> None:
+        if self.workspace_session is None:
+            return
+        query = self.workspace_search.text().strip()
+        self.workspace_search_results.clear()
+        if not query:
             return
         try:
             snapshot = SQLiteWorkspaceIndex(self.workspace_session.root.path).load()
@@ -355,24 +637,24 @@ class MainWindow(QMainWindow):
         except (OSError, ValueError, sqlite3.Error) as exc:
             self._show_error("Workspace search", f"Rebuild the index first: {exc}")
             return
-        if not results:
-            QMessageBox.information(self, "Workspace search", "No matches found.")
-            return
-        result = results[0]
-        answer = QMessageBox.question(
-            self,
-            "Workspace search result",
-            (
-                f"{result.title} — {result.path}:{result.line}\n"
-                f"{result.snippet}\n\nOpen it?"
-            ),
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.Yes,
-        )
-        if answer == QMessageBox.StandardButton.Yes:
-            self.open_document_at(
-                open_workspace_search_result(self.workspace_session.root.path, result)
+        for result in results:
+            item = QListWidgetItem(
+                f"{result.title} · {result.path}:{result.line}\n{result.snippet}"
             )
+            item.setData(Qt.ItemDataRole.UserRole, result.path)
+            item.setToolTip(f"{result.path}:{result.line}")
+            self.workspace_search_results.addItem(item)
+
+    def _open_search_result(self, item: QListWidgetItem) -> None:
+        if self.workspace_session is None:
+            return
+        relative = item.data(Qt.ItemDataRole.UserRole)
+        if not isinstance(relative, str):
+            return
+        try:
+            self.open_document_at(self.workspace_session.root.path / relative)
+        except DocumentReadError as exc:
+            self._show_error("Could not open search result", str(exc))
 
     def _toggle_graph(self, visible: bool) -> None:
         if visible and self.workspace_session is None:
@@ -441,21 +723,10 @@ class MainWindow(QMainWindow):
     def _open_graph_node(self, node_id: str) -> None:
         if self.workspace_session is None:
             return
-        previous = self._current_workspace_node_id()
         try:
-            opened = self.open_document_at(self.workspace_session.root.path / node_id)
-            if opened is None:
-                self._restore_navigation_selection(previous)
+            self.open_document_at(self.workspace_session.root.path / node_id)
         except DocumentReadError as exc:
             self._show_error("Could not open document", str(exc))
-
-    def _restore_navigation_selection(self, node_id: str | None) -> None:
-        self.graph_view.select_node(node_id)
-        if node_id is None:
-            self.file_tree.clearSelection()
-            self.file_tree.setCurrentItem(None)  # type: ignore[call-overload]
-            return
-        self._select_graph_node(node_id)
 
     def _rebuild_workspace_index(self) -> None:
         if self.workspace_session is None:
@@ -484,26 +755,20 @@ class MainWindow(QMainWindow):
                 yield entry.relative_path
 
     def _save_action(self) -> bool:
-        if self.document_session is None:
+        session = self.document_session
+        if session is None:
             self._show_error("Could not save document", "Open a Markdown file first.")
             return False
-        if self.document_session.document.path is None:
-            return self._save_as_dialog()
-        try:
-            self.save_current_to_disk()
-        except (
-            DocumentReadError,
-            DocumentWriteError,
-            ExternalModificationError,
-        ) as exc:
-            self._show_error("Could not save document", str(exc))
-            return False
-        return True
+        return self._save_session(session)
 
-    def _save_as_dialog(self) -> bool:
-        if self.document_session is None:
+    def _save_as_dialog(self, session: DocumentSession | None = None) -> bool:
+        session = session or self.document_session
+        if session is None:
             self._show_error("Could not save document", "Open a Markdown file first.")
             return False
+        key = self.document_tabs.key_for_session(session)
+        if key == self._active_tab_key:
+            session.edit(self.editor_view.bridge.getContent())
         filename, _ = QFileDialog.getSaveFileName(
             self,
             "Save Markdown As",
@@ -526,7 +791,7 @@ class MainWindow(QMainWindow):
                 return False
             overwrite = True
         try:
-            self.save_as_to(path, overwrite=overwrite)
+            self._save_session_as(session, key, session.document.path, path, overwrite)
         except (
             DestinationExistsError,
             DocumentReadError,
@@ -537,26 +802,9 @@ class MainWindow(QMainWindow):
             return False
         return True
 
-    def _confirm_unsaved_changes(self) -> bool:
-        """Allow a document transition only after Save or explicit Discard."""
-        session = self.document_session
-        if session is None or not session.dirty:
-            return True
-        choice = QMessageBox.warning(
-            self,
-            "Unsaved changes",
-            "Save changes before continuing?",
-            QMessageBox.StandardButton.Save
-            | QMessageBox.StandardButton.Discard
-            | QMessageBox.StandardButton.Cancel,
-            QMessageBox.StandardButton.Cancel,
-        )
-        if choice == QMessageBox.StandardButton.Save:
-            return self._save_action()
-        return choice == QMessageBox.StandardButton.Discard
-
     def closeEvent(self, event: QCloseEvent) -> None:
-        if self._confirm_unsaved_changes():
+        if self._resolve_dirty_tabs(self.document_tabs.keys):
+            self._save_layout()
             event.accept()
         else:
             event.ignore()
@@ -660,3 +908,53 @@ class MainWindow(QMainWindow):
 
     def _render_pending_preview(self) -> None:
         self.preview_view.render_markdown(self._pending_markdown)
+
+    def _restore_layout(self) -> None:
+        geometry = self._settings.value("window/geometry")
+        state = self._settings.value("window/state")
+        if geometry is not None:
+            self.restoreGeometry(geometry)
+            self.resize(self.size().expandedTo(self.minimumSizeHint()))
+        saved_size = self._settings.value("window/size")
+        if saved_size is not None:
+            self.resize(saved_size)
+        if state is not None:
+            self.restoreState(state)
+        sizes = self._settings.value("window/editorPreviewSplitter")
+        if isinstance(sizes, list) and len(sizes) == 2:
+            self.splitter.setSizes([int(sizes[0]), int(sizes[1])])
+        preview_visible = self._settings.value("panels/previewVisible", True, type=bool)
+        blocker = QSignalBlocker(self.show_preview_action)
+        self.show_preview_action.setChecked(bool(preview_visible))
+        self.preview_view.setVisible(bool(preview_visible))
+        del blocker
+        if self.workspace_session is None:
+            self._workspace_dock.hide()
+            self._graph_dock.hide()
+        self._suppress_layout_update = False
+
+    def _save_layout(self) -> None:
+        if self.size().width() > 0 and self.size().height() > 0:
+            self._settings.setValue("window/size", self.size())
+        self._settings.setValue("window/geometry", self.saveGeometry())
+        self._settings.setValue("window/state", self.saveState())
+        self._settings.setValue("window/editorPreviewSplitter", self.splitter.sizes())
+        self._settings.setValue(
+            "panels/workspaceVisible", self._preferred_workspace_visible
+        )
+        self._settings.setValue("panels/graphVisible", self._preferred_graph_visible)
+        self._settings.setValue(
+            "panels/previewVisible", self.show_preview_action.isChecked()
+        )
+        self._settings.sync()
+
+    def _workspace_visibility_changed(self, visible: bool) -> None:
+        if not self._suppress_layout_update and self.workspace_session is not None:
+            self._preferred_workspace_visible = visible
+
+    def _graph_visibility_changed(self, visible: bool) -> None:
+        if not self._suppress_layout_update and self.workspace_session is not None:
+            self._preferred_graph_visible = visible
+            blocker = QSignalBlocker(self.show_graph_action)
+            self.show_graph_action.setChecked(visible)
+            del blocker

@@ -9,13 +9,17 @@ class EditorBridge(QObject):
     """Expose only Markdown text synchronization to the editor WebView."""
 
     contentChanged = Signal(str)
+    documentContentChanged = Signal(str, str)
     commandRequested = Signal(str)
+    documentSwitchRequested = Signal(str, str)
+    documentCloseRequested = Signal(str)
 
     _COMMANDS = frozenset({"bold", "italic", "heading", "link", "code"})
 
     def __init__(self, content: str = "", parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._content = content
+        self._document_key: str | None = None
 
     @Slot(str)
     def setContent(self, content: str) -> None:
@@ -23,6 +27,20 @@ class EditorBridge(QObject):
             return
         self._content = content
         self.contentChanged.emit(content)
+        if self._document_key is not None:
+            self.documentContentChanged.emit(self._document_key, content)
+
+    @Slot(str, str)
+    def setDocumentContent(self, document_key: str, content: str) -> None:
+        """Forward an edit with its origin key so Qt can update that session."""
+        if self._document_key is None and document_key == "__initial__":
+            self._document_key = document_key
+        if document_key == self._document_key:
+            if content == self._content:
+                return
+            self._content = content
+            self.contentChanged.emit(content)
+        self.documentContentChanged.emit(document_key, content)
 
     @Slot(result=str)
     def getContent(self) -> str:
@@ -33,3 +51,20 @@ class EditorBridge(QObject):
         """Forward only the supported formatting commands to CodeMirror."""
         if command in self._COMMANDS:
             self.commandRequested.emit(command)
+
+    @Slot(str, str)
+    def switchDocument(self, document_key: str, content: str) -> None:
+        """Switch CodeMirror's local state to a document without editing it."""
+        self._content = content
+        self._document_key = document_key
+        self.documentSwitchRequested.emit(document_key, content)
+
+    @Slot(str)
+    def closeDocumentState(self, document_key: str) -> None:
+        """Forget one closed document's CodeMirror history and view state."""
+        self.documentCloseRequested.emit(document_key)
+
+    @Slot(result=str)
+    def getDocumentKey(self) -> str:
+        """Return the active tab identity when CodeMirror initializes late."""
+        return self._document_key or ""

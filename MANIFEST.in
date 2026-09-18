@@ -1,4 +1,4 @@
 include pdf2md_build.py
 include frontend/package.json frontend/package-lock.json
-recursive-include frontend/src *.html *.js
+recursive-include frontend/src *.html *.js *.css
 recursive-include frontend/scripts *.cjs

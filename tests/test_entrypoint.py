@@ -22,6 +22,23 @@ def test_startup_registers_asset_scheme_before_qapplication(
             events.append("application")
 
         @staticmethod
+        def setOrganizationName(_name: str) -> None:
+            events.append("organization")
+
+        @staticmethod
+        def setApplicationName(_name: str) -> None:
+            events.append("application-name")
+
+        @staticmethod
+        def setStyle(_name: str) -> None:
+            events.append("style")
+
+        @staticmethod
+        def setStyleSheet(styles: str) -> None:
+            assert "QMainWindow" in styles
+            events.append("theme")
+
+        @staticmethod
         def exec() -> int:
             events.append("exec")
             return 0
@@ -41,4 +58,14 @@ def test_startup_registers_asset_scheme_before_qapplication(
     monkeypatch.setattr(entrypoint, "MainWindow", FakeWindow)
 
     assert entrypoint.main() == 0
-    assert events == ["scheme", "application", "window", "show", "exec"]
+    assert events == [
+        "scheme",
+        "application",
+        "organization",
+        "application-name",
+        "style",
+        "theme",
+        "window",
+        "show",
+        "exec",
+    ]

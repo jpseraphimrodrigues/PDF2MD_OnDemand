@@ -28,6 +28,7 @@ pdf2md_ondemand = [
     "ui/desktop/frontend/*.js",
     "ui/desktop/frontend/*.css",
     "ui/desktop/frontend/licenses/*.txt",
+    "ui/desktop/themes/*.qss",
 ]
 
 
