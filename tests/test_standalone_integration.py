@@ -19,9 +19,9 @@ from pdf2md_ondemand.ui.desktop.main_window import MainWindow
 
 
 def _application() -> QApplication:
+    register_asset_scheme()
     app = QApplication.instance()
     if app is None:
-        register_asset_scheme()
         app = QApplication([])
     return app
 

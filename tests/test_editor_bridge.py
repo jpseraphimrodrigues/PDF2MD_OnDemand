@@ -7,9 +7,10 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QTWEBENGINE_CHROMIUM_FLAGS", "--no-sandbox --disable-gpu")
 
-from PySide6.QtCore import QObject, QTimer
+from PySide6.QtCore import QEventLoop, QObject, QTimer
 from PySide6.QtWidgets import QApplication
 
+from pdf2md_ondemand.adapters.qt_asset_scheme import register_asset_scheme
 from pdf2md_ondemand.ui.desktop.editor_bridge import EditorBridge
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
 
@@ -55,8 +56,10 @@ def test_editor_bridge_forwards_only_supported_format_commands() -> None:
 
 
 def test_editor_view_round_trips_initial_and_edited_unicode() -> None:
+    register_asset_scheme()
     app = QApplication.instance() or QApplication([])
     view = EditorView("ação Ω")
+    loop = QEventLoop()
     changed: list[str] = []
     view.bridge.contentChanged.connect(changed.append)
     initial: list[str | None] = []
@@ -66,7 +69,7 @@ def test_editor_view_round_trips_initial_and_edited_unicode() -> None:
     def check_after_undo() -> None:
         view.page().runJavaScript(
             "window.editorApi.getContent()",
-            lambda value: (after_undo.append(value), app.quit()),
+            lambda value: (after_undo.append(value), loop.quit()),
         )
 
     def undo_command(_value: object) -> None:
@@ -94,9 +97,9 @@ def test_editor_view_round_trips_initial_and_edited_unicode() -> None:
         )
 
     view.loadFinished.connect(page_loaded)
-    QTimer.singleShot(8000, app.quit)
+    QTimer.singleShot(8000, loop.quit)
     view.show()
-    app.exec()
+    loop.exec()
     assert initial == ["ação Ω"]
     assert after_command == ["****ação Ω"]
     assert after_undo == ["ação Ω"]
@@ -105,3 +108,4 @@ def test_editor_view_round_trips_initial_and_edited_unicode() -> None:
     assert changed == ["****ação Ω", "ação Ω"]
     view.bridge.setContent("editado 日本語")
     assert changed == ["****ação Ω", "ação Ω", "editado 日本語"]
+    assert QApplication.instance() is app
