@@ -56,11 +56,19 @@ def test_editor_bridge_forwards_only_supported_format_commands() -> None:
     requested: list[str] = []
     bridge.commandRequested.connect(requested.append)
 
-    for command in ("bold", "italic", "heading", "link", "code"):
+    for command in (
+        "bold", "italic", "heading", "link", "code", "strikethrough",
+        "bullet_list", "ordered_list", "quote", "horizontal_rule", "image",
+        "table", "math", "mermaid",
+    ):
         bridge.applyCommand(command)
     bridge.applyCommand("execute arbitrary JavaScript")
 
-    assert requested == ["bold", "italic", "heading", "link", "code"]
+    assert requested == [
+        "bold", "italic", "heading", "link", "code", "strikethrough",
+        "bullet_list", "ordered_list", "quote", "horizontal_rule", "image",
+        "table", "math", "mermaid",
+    ]
 
 
 def test_editor_bridge_switch_and_close_do_not_emit_content_edits() -> None:

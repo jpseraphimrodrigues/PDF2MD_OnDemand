@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from pdf2md_ondemand.application.query_graph import GraphQuery, query_graph
 from pdf2md_ondemand.domain.graph import GraphEdgeKind, KnowledgeGraph
+from pdf2md_ondemand.ui.icons import icon
 
 
 class _NodeItem(QGraphicsEllipseItem):
@@ -204,8 +205,16 @@ class GraphView(QWidget):
         self._graph = KnowledgeGraph((), (), ())
         self._current_node: str | None = None
         self.text_filter = QLineEdit(self)
+        self.text_filter.setObjectName("graphTextFilter")
+        self.text_filter.addAction(
+            icon("search"), QLineEdit.ActionPosition.LeadingPosition
+        )
         self.text_filter.setPlaceholderText("Filter title or path")
         self.tag_filter = QLineEdit(self)
+        self.tag_filter.setObjectName("graphTagFilter")
+        self.tag_filter.addAction(
+            icon("settings"), QLineEdit.ActionPosition.LeadingPosition
+        )
         self.tag_filter.setPlaceholderText("Tags (comma separated)")
         self.orphans_filter = QCheckBox("Show orphans", self)
         self.orphans_filter.setChecked(True)

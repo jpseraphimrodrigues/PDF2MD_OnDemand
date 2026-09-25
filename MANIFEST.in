@@ -2,3 +2,4 @@ include pdf2md_build.py
 include frontend/package.json frontend/package-lock.json
 recursive-include frontend/src *.html *.js *.css
 recursive-include frontend/scripts *.cjs
+recursive-include src/pdf2md_ondemand/ui/lucide *.svg

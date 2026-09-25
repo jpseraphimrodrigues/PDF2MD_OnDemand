@@ -47,7 +47,11 @@ class _Bridge(QObject):
         return self._content
 
     def applyCommand(self, command: str) -> None:
-        if command in {"bold", "italic", "heading", "link", "code"}:
+        if command in {
+            "bold", "italic", "heading", "link", "code", "strikethrough",
+            "bullet_list", "ordered_list", "quote", "horizontal_rule", "image",
+            "table", "math", "mermaid",
+        }:
             self.commandRequested.emit(command)
 
 
@@ -308,11 +312,27 @@ def test_format_toolbar_actions_dispatch_narrow_bridge_commands(
     commands: list[str] = []
     window.editor_view.bridge.commandRequested.connect(commands.append)
 
-    assert set(window.format_actions) == {"bold", "italic", "heading", "link", "code"}
+    assert set(window.format_actions) == {
+        "bold",
+        "italic",
+        "heading",
+        "strikethrough",
+        "link",
+        "code",
+        "bullet_list",
+        "ordered_list",
+        "quote",
+        "horizontal_rule",
+        "image",
+        "table",
+        "math",
+        "mermaid",
+    }
+    assert all(not action.icon().isNull() for action in window.format_actions.values())
     for action in window.format_actions.values():
         action.trigger()
 
-    assert commands == ["bold", "italic", "heading", "link", "code"]
+    assert commands == list(window.format_actions)
     window.close()
     app.processEvents()
 

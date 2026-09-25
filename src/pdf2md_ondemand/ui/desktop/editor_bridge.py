@@ -14,7 +14,24 @@ class EditorBridge(QObject):
     documentSwitchRequested = Signal(str, str)
     documentCloseRequested = Signal(str)
 
-    _COMMANDS = frozenset({"bold", "italic", "heading", "link", "code"})
+    _COMMANDS = frozenset(
+        {
+            "bold",
+            "italic",
+            "heading",
+            "link",
+            "code",
+            "strikethrough",
+            "bullet_list",
+            "ordered_list",
+            "quote",
+            "horizontal_rule",
+            "image",
+            "table",
+            "math",
+            "mermaid",
+        }
+    )
 
     def __init__(self, content: str = "", parent: QObject | None = None) -> None:
         super().__init__(parent)

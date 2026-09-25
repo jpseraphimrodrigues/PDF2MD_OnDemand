@@ -56,6 +56,7 @@ from pdf2md_ondemand.ui.desktop.document_tabs import DocumentTabs
 from pdf2md_ondemand.ui.desktop.editor_view import EditorView
 from pdf2md_ondemand.ui.desktop.graph_view import GraphView
 from pdf2md_ondemand.ui.desktop.preview_view import PreviewView
+from pdf2md_ondemand.ui.icons import icon
 
 PREVIEW_DEBOUNCE_MS = 200
 
@@ -97,6 +98,10 @@ class MainWindow(QMainWindow):
         self.file_tree.itemDoubleClicked.connect(self._open_tree_item)
         self.file_tree.currentItemChanged.connect(self._tree_selection_changed)
         self.workspace_search = QLineEdit()
+        self.workspace_search.setObjectName("workspaceSearch")
+        self.workspace_search.addAction(
+            icon("search"), QLineEdit.ActionPosition.LeadingPosition
+        )
         self.workspace_search.setPlaceholderText("Search workspace")
         self.workspace_search.setClearButtonEnabled(True)
         self.workspace_search.returnPressed.connect(self._run_workspace_search)
@@ -112,6 +117,7 @@ class MainWindow(QMainWindow):
         sidebar_layout.addWidget(self.workspace_search)
         sidebar_layout.addWidget(self.workspace_search_results)
         self._workspace_dock = QDockWidget("Workspace", self)
+        self._workspace_dock.setWindowIcon(icon("workspace"))
         self._workspace_dock.setWidget(self.workspace_sidebar)
         self._workspace_dock.setObjectName("workspaceDock")
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._workspace_dock)
@@ -123,6 +129,7 @@ class MainWindow(QMainWindow):
         self.graph_view.nodeActivated.connect(self._open_graph_node)
         self.graph_view.nodeSelected.connect(self._select_graph_node)
         self._graph_dock = QDockWidget("Knowledge Graph", self)
+        self._graph_dock.setWindowIcon(icon("graph"))
         self._graph_dock.setObjectName("knowledgeGraphDock")
         self._graph_dock.setWidget(self.graph_view)
         self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._graph_dock)
@@ -400,71 +407,102 @@ class MainWindow(QMainWindow):
     def _create_file_actions(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
         self.new_tab_action = QAction("New Tab", self)
+        self.new_tab_action.setIcon(icon("new"))
         self.new_tab_action.setShortcut(QKeySequence.StandardKey.New)
         self.new_tab_action.triggered.connect(self.new_document_tab)
         file_menu.addAction(self.new_tab_action)
         self.new_note_action = QAction("New Markdown File…", self)
+        self.new_note_action.setIcon(icon("new"))
         self.new_note_action.triggered.connect(self._new_markdown_file)
         file_menu.addAction(self.new_note_action)
         self.close_note_action = QAction("Close Tab", self)
+        self.close_note_action.setIcon(icon("close"))
         self.close_note_action.triggered.connect(self.close_note)
         file_menu.addAction(self.close_note_action)
         file_menu.addSeparator()
         self.open_action = QAction("&Open…", self)
+        self.open_action.setIcon(icon("open"))
         self.open_action.setShortcut(QKeySequence.StandardKey.Open)
         self.open_action.triggered.connect(self._open_dialog)
         file_menu.addAction(self.open_action)
         self.open_folder_action = QAction("Open Folder…", self)
+        self.open_folder_action.setIcon(icon("open_folder"))
         self.open_folder_action.triggered.connect(self._open_folder_dialog)
         file_menu.addAction(self.open_folder_action)
         self.close_workspace_action = QAction("Close Workspace", self)
+        self.close_workspace_action.setIcon(icon("close"))
         self.close_workspace_action.triggered.connect(self.close_workspace)
         file_menu.addAction(self.close_workspace_action)
         self.search_workspace_action = QAction("Search Workspace…", self)
+        self.search_workspace_action.setIcon(icon("search"))
         self.search_workspace_action.triggered.connect(self._search_workspace_dialog)
         file_menu.addAction(self.search_workspace_action)
         self.rebuild_workspace_index_action = QAction("Rebuild Workspace Index", self)
+        self.rebuild_workspace_index_action.setIcon(icon("refresh"))
         self.rebuild_workspace_index_action.triggered.connect(
             self._rebuild_workspace_index
         )
         file_menu.addAction(self.rebuild_workspace_index_action)
         self.show_graph_action = QAction("Knowledge Graph", self)
+        self.show_graph_action.setIcon(icon("graph"))
         self.show_graph_action.setCheckable(True)
         self.show_graph_action.toggled.connect(self._toggle_graph)
         file_menu.addAction(self.show_graph_action)
 
         self.save_action = QAction("&Save", self)
+        self.save_action.setIcon(icon("save"))
         self.save_action.setShortcut(QKeySequence.StandardKey.Save)
         self.save_action.triggered.connect(self._save_action)
         file_menu.addAction(self.save_action)
 
         self.save_as_action = QAction("Save &As…", self)
+        self.save_as_action.setIcon(icon("save_as"))
         self.save_as_action.setShortcut(QKeySequence.StandardKey.SaveAs)
         self.save_as_action.triggered.connect(self._save_as_dialog)
         file_menu.addAction(self.save_as_action)
 
         view_menu = self.menuBar().addMenu("&View")
         self.show_preview_action = QAction("Show Preview", self)
+        self.show_preview_action.setIcon(icon("preview"))
         self.show_preview_action.setCheckable(True)
         self.show_preview_action.setChecked(True)
         self.show_preview_action.toggled.connect(self.preview_view.setVisible)
         view_menu.addAction(self.show_preview_action)
-        view_menu.addAction(self._workspace_dock.toggleViewAction())
-        view_menu.addAction(self._graph_dock.toggleViewAction())
+        workspace_view_action = self._workspace_dock.toggleViewAction()
+        workspace_view_action.setIcon(icon("workspace"))
+        graph_view_action = self._graph_dock.toggleViewAction()
+        graph_view_action.setIcon(icon("graph"))
+        view_menu.addAction(workspace_view_action)
+        view_menu.addAction(graph_view_action)
 
     def _create_format_toolbar(self) -> None:
         self.format_toolbar = QToolBar("Markdown", self)
+        self.format_toolbar.setObjectName("markdownToolbar")
+        self.format_toolbar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         self.addToolBar(self.format_toolbar)
         labels = {
             "bold": "Bold",
             "italic": "Italic",
             "heading": "Heading",
+            "strikethrough": "Strikethrough",
             "link": "Link",
-            "code": "Code",
+            "code": "Inline code",
+            "bullet_list": "Bullet list",
+            "ordered_list": "Numbered list",
+            "quote": "Quote",
+            "horizontal_rule": "Horizontal rule",
+            "image": "Image",
+            "table": "Table",
+            "math": "Math block",
+            "mermaid": "Mermaid diagram",
         }
         self.format_actions: dict[str, QAction] = {}
-        for command, label in labels.items():
+        for index, (command, label) in enumerate(labels.items()):
+            if index in {4, 6, 10, 12}:
+                self.format_toolbar.addSeparator()
             action = QAction(label, self)
+            action.setIcon(icon(command))
+            action.setToolTip(label)
             action.triggered.connect(
                 lambda _checked=False, name=command: self._dispatch_editor_command(name)
             )

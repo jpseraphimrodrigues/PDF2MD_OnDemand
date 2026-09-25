@@ -4,6 +4,7 @@ const WRAPS = {
   bold: ["**", "**"],
   italic: ["*", "*"],
   code: ["`", "`"],
+  strikethrough: ["~~", "~~"],
 };
 
 // Empty wrap selections place the caret between delimiters. Empty links insert
@@ -52,6 +53,26 @@ export function buildCommandTransaction(document, anchor, head, command) {
         anchor: anchor >= lineStart ? anchor + 2 : anchor,
         head: head >= lineStart ? head + 2 : head,
       },
+    };
+  }
+
+  const inserts = {
+    bullet_list: "- ",
+    ordered_list: "1. ",
+    quote: "> ",
+    horizontal_rule: "---\n",
+    image: "![alt text](image-url)",
+    table: "| Column 1 | Column 2 |\n| --- | --- |\n| Value | Value |",
+    math: "$$\n\n$$",
+    mermaid: "```mermaid\n\n```",
+  };
+  if (Object.hasOwn(inserts, command)) {
+    const insert = inserts[command];
+    return {
+      from,
+      to,
+      insert,
+      selection: { anchor: from, head: from + insert.length },
     };
   }
 
